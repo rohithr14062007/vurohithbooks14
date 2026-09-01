@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>V.U Rohith Books - Complete Website</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js"></script>
+</head>
+<body>
+<header>
+    <h1>V.U Rohith Books Website</h1>
+</header>
+<nav>
+    <a href="index.html">Home</a>
+    <a onclick="showSection('login')">Login</a>
+    <a onclick="showSection('signup')">Sign Up</a>
+    <a class="protected" onclick="showSection('books')">Book Listings</a>
+    <a class="protected" onclick="showSection('downloads')">Download</a>
+    <a class="protected" onclick="showSection('entry')">Entry Form</a>
+    <a class="protected" onclick="showSection('upload')">Upload</a>
+</nav>
+
+<section id="login">
+    <h2>Login</h2>
+    <form id="login-form">
+        Username: <input type="text" name="username" required>
+        Password: <input type="password" name="password" required>
+        <input type="submit" value="Login">
+    </form>
+</section>
+
+<section id="signup">
+    <h2>Sign Up</h2>
+    <form id="signup-form">
+        Name: <input type="text" name="name" required>
+        Email: <input type="email" name="email" required>
+        Username: <input type="text" name="username" required>
+        Password: <input type="password" name="password" required>
+        <input type="submit" value="Sign Up">
+    </form>
+    <div id="signup-success" class="success-message"></div>
+</section>
+
+<section id="books" class="protected">
+    <h2>Book Listings</h2>
+    <h3>A. Story Books</h3>
+    <ul>
+        <li>The Book of Story 1</li>
+        <li>The Book of Story 2</li>
+    </ul>
+    <h3>B. Lesson Books</h3>
+    <ul>
+        <li>The Lesson Book 1</li>
+        <li>The Lesson Book 2</li>
+    </ul>
+    <h3>C. Mathematics Books</h3>
+    <ul>
+        <li>The All Tricks</li>
+        <li>Vedic Maths</li>
+        <li>New Mathematics</li>
+    </ul>
+    <h3>D. Other Books</h3>
+    <ul>
+        <li>My Conversations</li>
+    </ul>
+</section>
+
+<section id="downloads" class="protected">
+    <h2>Download Books</h2>
+    <ul>
+        <li>The book of story 1 <a href="uploads/story1.pdf" download><button>Download</button></a></li>
+        <li>My Conversations <a href="uploads/conversations.pdf" download><button>Download</button></a></li>
+    </ul>
+</section>
+
+<section id="entry" class="protected">
+    <h2>Student Entry Form</h2>
+    <form>
+        Name: <input type="text" required>
+        Grade & Division: <input type="text" required>
+        Father's Name: <input type="text">
+        Mother's Name: <input type="text">
+        Phone 1: <input type="tel" pattern="[0-9]{10}" required>
+        Phone 2: <input type="tel" pattern="[0-9]{10}">
+        Address: <textarea rows="5" required></textarea>
+        Student No: <input type="text" id="student_no" readonly>
+        <button type="button" onclick="generateStudentNo()">Generate</button><br><br>
+        <input type="submit" value="Submit">
+        <input type="reset" value="Reset">
+    </form>
+</section>
+
+<section id="upload" class="protected">
+    <h2>Upload New Books (Owner Only)</h2>
+    <ul>
+        <li>The book of story 1 <input type="file" id="fileInput1"><button onclick="startUpload('fileInput1', 'The book of story 1')">Upload</button><button onclick="cancelUpload('fileInput1')">Cancel</button></li>
+        <li>The book of story 2 <input type="file" id="fileInput2"><button onclick="startUpload('fileInput2', 'The book of story 2')">Upload</button><button onclick="cancelUpload('fileInput2')">Cancel</button></li>
+        <li>The lesson book 1 <input type="file" id="fileInput3"><button onclick="startUpload('fileInput3', 'The lesson book 1')">Upload</button><button onclick="cancelUpload('fileInput3')">Cancel</button></li>
+        <li>The lesson book 2 <input type="file" id="fileInput4"><button onclick="startUpload('fileInput4', 'The lesson book 2')">Upload</button><button onclick="cancelUpload('fileInput4')">Cancel</button></li>
+        <li>The All Tricks <input type="file" id="fileInput6"><button onclick="startUpload('fileInput6', 'The All Tricks')">Upload</button><button onclick="cancelUpload('fileInput6')">Cancel</button></li>
+        <li>New Mathematics <input type="file" id="fileInput7"><button onclick="startUpload('fileInput7', 'New Mathematics')">Upload</button><button onclick="cancelUpload('fileInput7')">Cancel</button></li>
+        <li>My Conversations <input type="file" id="fileInput5"><button onclick="startUpload('fileInput5', 'My Conversations')">Upload</button><button onclick="cancelUpload('fileInput5')">Cancel</button></li>
+    </ul>
+</section>
+</body>
+</html>
