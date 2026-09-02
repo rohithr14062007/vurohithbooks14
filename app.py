@@ -2,6 +2,7 @@ import os
 import random
 from datetime import timedelta
 from dotenv import load_dotenv
+from supabase import create_client
 
 from flask import Flask, flash, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -12,20 +13,23 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 # Load environment variables from the project file regardless of launch directory.
 load_dotenv(os.path.join(BASE_DIR, "supabase.env"))
 
-app = Flask(__name__)
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = (
+    os.environ.get("SUPABASE_KEY")
+    or os.environ.get("SUPABASE_SECRET_KEY")
+    or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+    or os.environ.get("SUPABASE_ANON_KEY")
+)
 
-# Initialize Supabase client
-try:
-    from supabase import create_client
-    SUPABASE_URL = os.environ.get("SUPABASE_URL")
-    SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY")
-    if SUPABASE_URL and SUPABASE_SECRET_KEY:
-        supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
-    else:
-        raise ValueError("Supabase credentials not found in environment")
-except Exception as e:
-    print(f"Error: Could not initialize Supabase: {e}")
-    supabase = None
+if not supabase_url or not supabase_key:
+    raise RuntimeError(
+        "Could not initialize Supabase: Supabase credentials not found in environment. "
+        f"URL: {bool(supabase_url)}, KEY: {bool(supabase_key)}"
+    )
+
+supabase = create_client(supabase_url, supabase_key)
+app = Flask(__name__)
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
