@@ -16,9 +16,19 @@ DB_PATH = os.path.join(BASE_DIR, "books.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_KEY)
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or os.environ.get("SUPABASE_PROJECT_URL")
+SUPABASE_KEY = (
+    os.environ.get("SUPABASE_KEY")
+    or os.environ.get("SUPABASE_ANON_KEY")
+    or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
+    or os.environ.get("SUPABASE_SECRET_KEY")
+)
+SUPABASE_JWKS_URL = os.environ.get("SUPABASE_JWKS_URL")
+SUPABASE_DB_URL = (
+    os.environ.get("SUPABASE_DB_URL")
+    or os.environ.get("DATABASE_URL")
+)
+USE_SUPABASE = bool(SUPABASE_DB_URL)
 
 app.config.update(
     SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "rohith-books-secret-2026"),
@@ -28,7 +38,9 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=False,
     SUPABASE_URL=SUPABASE_URL,
+    SUPABASE_DB_URL=SUPABASE_DB_URL,
     SUPABASE_KEY=SUPABASE_KEY,
+    SUPABASE_JWKS_URL=SUPABASE_JWKS_URL,
 )
 
 
@@ -66,7 +78,7 @@ class PostgresConnectionAdapter:
 
 def get_db():
     if USE_SUPABASE:
-        connection = psycopg.connect(SUPABASE_URL, sslmode="require")
+        connection = psycopg.connect(SUPABASE_DB_URL, sslmode="require")
         return PostgresConnectionAdapter(connection)
 
     conn = sqlite3.connect(DB_PATH)
