@@ -1,8 +1,11 @@
 import os
 import random
+import re
 import sqlite3
 from datetime import timedelta
 
+import psycopg
+from psycopg.rows import dict_row
 from flask import Flask, flash, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -13,6 +16,10 @@ DB_PATH = os.path.join(BASE_DIR, "books.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_KEY)
+
 app.config.update(
     SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "rohith-books-secret-2026"),
     UPLOAD_FOLDER=UPLOAD_FOLDER,
@@ -20,20 +27,72 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=False,
+    SUPABASE_URL=SUPABASE_URL,
+    SUPABASE_KEY=SUPABASE_KEY,
 )
 
 
+class PostgresConnectionAdapter:
+    def __init__(self, connection):
+        self._conn = connection
+
+    def execute(self, query, params=()):
+        normalized_query = query
+        if "?" in query:
+            normalized_query = re.sub(r"\?", "%s", query)
+        cursor = self._conn.cursor(row_factory=dict_row)
+        cursor.execute(normalized_query, tuple(params or ()))
+        return cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self._conn.rollback()
+        else:
+            self._conn.commit()
+        return False
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
 
 def get_db():
+    if USE_SUPABASE:
+        connection = psycopg.connect(SUPABASE_URL, sslmode="require")
+        return PostgresConnectionAdapter(connection)
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def init_db():
+def table_columns(table_name):
     with get_db() as conn:
-        conn.execute(
-            """
+        if USE_SUPABASE:
+            rows = conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (table_name,),
+            ).fetchall()
+            return [row["column_name"] for row in rows]
+        return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+
+
+def init_db():
+    sqlite_ddl = {
+        "users": """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -45,30 +104,15 @@ def init_db():
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        conn.execute(
-            """
+            """,
+        "categories": """
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        default_categories = ["Story Books", "Lesson Books", "Mathematics Books", "Others"]
-        for category_name in default_categories:
-            conn.execute(
-                "INSERT OR IGNORE INTO categories (name) VALUES (?)",
-                (category_name,),
-            )
-
-        conn.execute(
-            "DELETE FROM categories WHERE name NOT IN (?, ?, ?, ?)",
-            ("Story Books", "Lesson Books", "Mathematics Books", "Others"),
-        )
-        conn.execute(
-            """
+            """,
+        "books": """
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -82,10 +126,8 @@ def init_db():
                 FOREIGN KEY(category_id) REFERENCES categories(id),
                 FOREIGN KEY(uploaded_by) REFERENCES users(id)
             )
-            """
-        )
-        conn.execute(
-            """
+            """,
+        "download_history": """
             CREATE TABLE IF NOT EXISTS download_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -94,10 +136,8 @@ def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(book_id) REFERENCES books(id)
             )
-            """
-        )
-        conn.execute(
-            """
+            """,
+        "reviews": """
             CREATE TABLE IF NOT EXISTS reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -108,10 +148,8 @@ def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id),
                 FOREIGN KEY(book_id) REFERENCES books(id)
             )
-            """
-        )
-        conn.execute(
-            """
+            """,
+        "student_entries": """
             CREATE TABLE IF NOT EXISTS student_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -140,10 +178,122 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
-            """
+            """,
+    }
+    postgres_ddl = {
+        "users": """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                phone TEXT,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        "categories": """
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        "books": """
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                title TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                original_name TEXT NOT NULL,
+                author TEXT,
+                description TEXT,
+                category_id INTEGER,
+                uploaded_by INTEGER,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(category_id) REFERENCES categories(id),
+                FOREIGN KEY(uploaded_by) REFERENCES users(id)
+            )
+            """,
+        "download_history": """
+            CREATE TABLE IF NOT EXISTS download_history (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                book_id INTEGER NOT NULL,
+                downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(book_id) REFERENCES books(id)
+            )
+            """,
+        "reviews": """
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                book_id INTEGER NOT NULL,
+                rating INTEGER DEFAULT 0,
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(book_id) REFERENCES books(id)
+            )
+            """,
+        "student_entries": """
+            CREATE TABLE IF NOT EXISTS student_entries (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT,
+                date_of_birth TEXT,
+                gender TEXT,
+                category TEXT,
+                grade_division TEXT,
+                fathers_name TEXT,
+                mothers_name TEXT,
+                phone1 TEXT,
+                phone2 TEXT,
+                emergency_contact TEXT,
+                address TEXT,
+                city TEXT,
+                state TEXT,
+                pincode TEXT,
+                institution_name TEXT,
+                blood_group TEXT,
+                nationality TEXT,
+                aadhaar_number TEXT,
+                religion TEXT,
+                parent_occupation TEXT,
+                student_no TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """,
+    }
+
+    ddl_sql = postgres_ddl if USE_SUPABASE else sqlite_ddl
+    with get_db() as conn:
+        for table_name in ["users", "categories", "books", "download_history", "reviews", "student_entries"]:
+            conn.execute(ddl_sql[table_name])
+
+        default_categories = ["Story Books", "Lesson Books", "Mathematics Books", "Others"]
+        for category_name in default_categories:
+            if USE_SUPABASE:
+                conn.execute(
+                    "INSERT INTO categories (name) VALUES (?) ON CONFLICT (name) DO NOTHING",
+                    (category_name,),
+                )
+            else:
+                conn.execute(
+                    "INSERT OR IGNORE INTO categories (name) VALUES (?)",
+                    (category_name,),
+                )
+
+        conn.execute(
+            "DELETE FROM categories WHERE name NOT IN (?, ?, ?, ?)",
+            ("Story Books", "Lesson Books", "Mathematics Books", "Others"),
         )
 
-        user_columns = [row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()]
+        user_columns = table_columns("users")
         if "role" not in user_columns:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
         if "phone" not in user_columns:
@@ -158,7 +308,7 @@ def init_db():
             "UPDATE users SET role = 'student' WHERE is_admin = 0 AND (role IS NULL OR role = '')"
         )
 
-        book_columns = [row[1] for row in conn.execute("PRAGMA table_info(books)").fetchall()]
+        book_columns = table_columns("books")
         for column_name, column_sql in {
             "author": "ALTER TABLE books ADD COLUMN author TEXT",
             "description": "ALTER TABLE books ADD COLUMN description TEXT",
@@ -180,7 +330,7 @@ def init_db():
                 (default_category_id["id"],),
             )
 
-        student_columns = [row[1] for row in conn.execute("PRAGMA table_info(student_entries)").fetchall()]
+        student_columns = table_columns("student_entries")
         for column_name in [
             "email",
             "date_of_birth",
@@ -202,7 +352,7 @@ def init_db():
 
         legacy_student_fields = {"gender", "category", "grade_division", "city", "state"}
         if legacy_student_fields.intersection(student_columns):
-            existing_student_columns = [row[1] for row in conn.execute("PRAGMA table_info(student_entries)").fetchall()]
+            existing_student_columns = table_columns("student_entries")
             legacy_table_name = "student_entries_legacy"
             conn.execute(f"ALTER TABLE student_entries RENAME TO {legacy_table_name}")
             conn.execute(
@@ -306,6 +456,8 @@ def conn_total(query, params=()):
         row = conn.execute(query, params).fetchone()
         if row is None:
             return 0
+        if isinstance(row, dict):
+            return next(iter(row.values()))
         return row[0] if isinstance(row, tuple) else next(iter(row))
 
 
@@ -532,7 +684,7 @@ def register():
                 "INSERT INTO users (name, email, username, password_hash, role, phone) VALUES (?, ?, ?, ?, ?, ?)",
                 (name, email, username, generate_password_hash(password), role, phone or None),
             )
-        except sqlite3.IntegrityError:
+        except (sqlite3.IntegrityError, psycopg.IntegrityError):
             flash("A user with that email already exists.", "error")
             return redirect(url_for("home"))
 
