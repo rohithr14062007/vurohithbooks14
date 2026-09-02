@@ -1,0 +1,8 @@
+supabase.env
+books.db
+__pycache__/
+*.py[cod]
+uploads/
+.env
+.venv/
+venv/

@@ -7,8 +7,10 @@ from flask import Flask, flash, redirect, render_template, request, send_from_di
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-# Load environment variables from supabase.env
-load_dotenv('supabase.env')
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# Load environment variables from the project file regardless of launch directory.
+load_dotenv(os.path.join(BASE_DIR, "supabase.env"))
 
 app = Flask(__name__)
 
@@ -25,7 +27,6 @@ except Exception as e:
     print(f"Error: Could not initialize Supabase: {e}")
     supabase = None
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
