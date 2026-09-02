@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Download History</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell admin-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">V.U</div>
+          <div>
+            <p class="eyebrow">History</p>
+            <h1>My Download History</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a href="{{ url_for('home') }}" class="ghost-button small">Back to Library</a>
+          <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
+        </div>
+      </header>
+
+      <main>
+        {% if downloads %}
+          <div class="table-wrap">
+            <table class="student-table">
+              <thead>
+                <tr>
+                  <th>Book</th>
+                  <th>Author</th>
+                  <th>Category</th>
+                  <th>Date &amp; Time</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in downloads %}
+                  <tr>
+                    <td>{{ item['book_title'] }}</td>
+                    <td>{{ item['author'] or 'Unknown Author' }}</td>
+                    <td>{{ item['category_name'] or 'Others' }}</td>
+                    <td>{{ item['downloaded_at'] }}</td>
+                    <td>
+                      <a href="{{ url_for('download_book', book_id=item['book_id']) }}" class="primary-button small" download>Download</a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="panel-inner">
+            <p class="empty-state">You have not downloaded any books yet.</p>
+          </div>
+        {% endif %}
+      </main>
+    </div>
+  </body>
+</html>

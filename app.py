@@ -1,34 +1,33 @@
 import os
 import random
-import re
-import sqlite3
 from datetime import timedelta
+from dotenv import load_dotenv
 
-import psycopg
-from psycopg.rows import dict_row
 from flask import Flask, flash, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+# Load environment variables from supabase.env
+load_dotenv('supabase.env')
+
 app = Flask(__name__)
+
+# Initialize Supabase client
+try:
+    from supabase import create_client
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY")
+    if SUPABASE_URL and SUPABASE_SECRET_KEY:
+        supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
+    else:
+        raise ValueError("Supabase credentials not found in environment")
+except Exception as e:
+    print(f"Error: Could not initialize Supabase: {e}")
+    supabase = None
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.path.join(BASE_DIR, "books.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL") or os.environ.get("SUPABASE_PROJECT_URL")
-SUPABASE_KEY = (
-    os.environ.get("SUPABASE_KEY")
-    or os.environ.get("SUPABASE_ANON_KEY")
-    or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
-    or os.environ.get("SUPABASE_SECRET_KEY")
-)
-SUPABASE_JWKS_URL = os.environ.get("SUPABASE_JWKS_URL")
-SUPABASE_DB_URL = (
-    os.environ.get("SUPABASE_DB_URL")
-    or os.environ.get("DATABASE_URL")
-)
-USE_SUPABASE = bool(SUPABASE_DB_URL)
 
 app.config.update(
     SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "rohith-books-secret-2026"),
@@ -37,402 +36,38 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=False,
-    SUPABASE_URL=SUPABASE_URL,
-    SUPABASE_DB_URL=SUPABASE_DB_URL,
-    SUPABASE_KEY=SUPABASE_KEY,
-    SUPABASE_JWKS_URL=SUPABASE_JWKS_URL,
 )
 
 
-class PostgresConnectionAdapter:
-    def __init__(self, connection):
-        self._conn = connection
-
-    def execute(self, query, params=()):
-        normalized_query = query
-        if "?" in query:
-            normalized_query = re.sub(r"\?", "%s", query)
-        cursor = self._conn.cursor(row_factory=dict_row)
-        cursor.execute(normalized_query, tuple(params or ()))
-        return cursor
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            self._conn.rollback()
-        else:
-            self._conn.commit()
-        return False
-
-    def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
-
-    def close(self):
-        self._conn.close()
-
-
-def get_db():
-    if USE_SUPABASE:
-        connection = psycopg.connect(SUPABASE_DB_URL, sslmode="require")
-        return PostgresConnectionAdapter(connection)
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def table_columns(table_name):
-    with get_db() as conn:
-        if USE_SUPABASE:
-            rows = conn.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = %s
-                ORDER BY ordinal_position
-                """,
-                (table_name,),
-            ).fetchall()
-            return [row["column_name"] for row in rows]
-        return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
-
-
 def init_db():
-    sqlite_ddl = {
-        "users": """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'student',
-                phone TEXT,
-                is_admin INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        "categories": """
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        "books": """
-            CREATE TABLE IF NOT EXISTS books (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                filename TEXT NOT NULL,
-                original_name TEXT NOT NULL,
-                author TEXT,
-                description TEXT,
-                category_id INTEGER,
-                uploaded_by INTEGER,
-                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(category_id) REFERENCES categories(id),
-                FOREIGN KEY(uploaded_by) REFERENCES users(id)
-            )
-            """,
-        "download_history": """
-            CREATE TABLE IF NOT EXISTS download_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                book_id INTEGER NOT NULL,
-                downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(book_id) REFERENCES books(id)
-            )
-            """,
-        "reviews": """
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                book_id INTEGER NOT NULL,
-                rating INTEGER DEFAULT 0,
-                comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(book_id) REFERENCES books(id)
-            )
-            """,
-        "student_entries": """
-            CREATE TABLE IF NOT EXISTS student_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                email TEXT,
-                date_of_birth TEXT,
-                gender TEXT,
-                category TEXT,
-                grade_division TEXT,
-                fathers_name TEXT,
-                mothers_name TEXT,
-                phone1 TEXT,
-                phone2 TEXT,
-                emergency_contact TEXT,
-                address TEXT,
-                city TEXT,
-                state TEXT,
-                pincode TEXT,
-                institution_name TEXT,
-                blood_group TEXT,
-                nationality TEXT,
-                aadhaar_number TEXT,
-                religion TEXT,
-                parent_occupation TEXT,
-                student_no TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-            """,
-    }
-    postgres_ddl = {
-        "users": """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'student',
-                phone TEXT,
-                is_admin INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        "categories": """
-            CREATE TABLE IF NOT EXISTS categories (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        "books": """
-            CREATE TABLE IF NOT EXISTS books (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                title TEXT NOT NULL,
-                filename TEXT NOT NULL,
-                original_name TEXT NOT NULL,
-                author TEXT,
-                description TEXT,
-                category_id INTEGER,
-                uploaded_by INTEGER,
-                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(category_id) REFERENCES categories(id),
-                FOREIGN KEY(uploaded_by) REFERENCES users(id)
-            )
-            """,
-        "download_history": """
-            CREATE TABLE IF NOT EXISTS download_history (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                book_id INTEGER NOT NULL,
-                downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(book_id) REFERENCES books(id)
-            )
-            """,
-        "reviews": """
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                book_id INTEGER NOT NULL,
-                rating INTEGER DEFAULT 0,
-                comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(book_id) REFERENCES books(id)
-            )
-            """,
-        "student_entries": """
-            CREATE TABLE IF NOT EXISTS student_entries (
-                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                email TEXT,
-                date_of_birth TEXT,
-                gender TEXT,
-                category TEXT,
-                grade_division TEXT,
-                fathers_name TEXT,
-                mothers_name TEXT,
-                phone1 TEXT,
-                phone2 TEXT,
-                emergency_contact TEXT,
-                address TEXT,
-                city TEXT,
-                state TEXT,
-                pincode TEXT,
-                institution_name TEXT,
-                blood_group TEXT,
-                nationality TEXT,
-                aadhaar_number TEXT,
-                religion TEXT,
-                parent_occupation TEXT,
-                student_no TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-            """,
-    }
-
-    ddl_sql = postgres_ddl if USE_SUPABASE else sqlite_ddl
-    with get_db() as conn:
-        for table_name in ["users", "categories", "books", "download_history", "reviews", "student_entries"]:
-            conn.execute(ddl_sql[table_name])
-
-        default_categories = ["Story Books", "Lesson Books", "Mathematics Books", "Others"]
-        for category_name in default_categories:
-            if USE_SUPABASE:
-                conn.execute(
-                    "INSERT INTO categories (name) VALUES (?) ON CONFLICT (name) DO NOTHING",
-                    (category_name,),
-                )
-            else:
-                conn.execute(
-                    "INSERT OR IGNORE INTO categories (name) VALUES (?)",
-                    (category_name,),
-                )
-
-        conn.execute(
-            "DELETE FROM categories WHERE name NOT IN (?, ?, ?, ?)",
-            ("Story Books", "Lesson Books", "Mathematics Books", "Others"),
-        )
-
-        user_columns = table_columns("users")
-        if "role" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
-        if "phone" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN phone TEXT")
-        if "is_admin" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-
-        conn.execute(
-            "UPDATE users SET role = 'admin' WHERE is_admin = 1 AND (role IS NULL OR role = '')"
-        )
-        conn.execute(
-            "UPDATE users SET role = 'student' WHERE is_admin = 0 AND (role IS NULL OR role = '')"
-        )
-
-        book_columns = table_columns("books")
-        for column_name, column_sql in {
-            "author": "ALTER TABLE books ADD COLUMN author TEXT",
-            "description": "ALTER TABLE books ADD COLUMN description TEXT",
-            "category_id": "ALTER TABLE books ADD COLUMN category_id INTEGER",
-        }.items():
-            if column_name not in book_columns:
-                conn.execute(column_sql)
-
-        default_category_id = conn.execute(
-            "SELECT id FROM categories WHERE name = 'Others' LIMIT 1"
-        ).fetchone()
-        if default_category_id:
-            conn.execute(
-                "UPDATE books SET category_id = ? WHERE category_id IS NULL",
-                (default_category_id["id"],),
-            )
-            conn.execute(
-                "UPDATE books SET category_id = ? WHERE category_id NOT IN (SELECT id FROM categories)",
-                (default_category_id["id"],),
-            )
-
-        student_columns = table_columns("student_entries")
-        for column_name in [
-            "email",
-            "date_of_birth",
-            "gender",
-            "category",
-            "city",
-            "state",
-            "pincode",
-            "institution_name",
-            "emergency_contact",
-            "blood_group",
-            "nationality",
-            "aadhaar_number",
-            "religion",
-            "parent_occupation",
-        ]:
-            if column_name not in student_columns:
-                conn.execute(f"ALTER TABLE student_entries ADD COLUMN {column_name} TEXT")
-
-        legacy_student_fields = {"gender", "category", "grade_division", "city", "state"}
-        if legacy_student_fields.intersection(student_columns):
-            existing_student_columns = table_columns("student_entries")
-            legacy_table_name = "student_entries_legacy"
-            conn.execute(f"ALTER TABLE student_entries RENAME TO {legacy_table_name}")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS student_entries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    email TEXT,
-                    date_of_birth TEXT,
-                    fathers_name TEXT,
-                    mothers_name TEXT,
-                    phone1 TEXT,
-                    phone2 TEXT,
-                    emergency_contact TEXT,
-                    address TEXT,
-                    pincode TEXT,
-                    institution_name TEXT,
-                    blood_group TEXT,
-                    nationality TEXT,
-                    aadhaar_number TEXT,
-                    religion TEXT,
-                    parent_occupation TEXT,
-                    student_no TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(user_id) REFERENCES users(id)
-                )
-                """
-            )
-
-            target_columns = [
-                "id",
-                "user_id",
-                "name",
-                "email",
-                "date_of_birth",
-                "fathers_name",
-                "mothers_name",
-                "phone1",
-                "phone2",
-                "emergency_contact",
-                "address",
-                "pincode",
-                "institution_name",
-                "blood_group",
-                "nationality",
-                "aadhaar_number",
-                "religion",
-                "parent_occupation",
-                "student_no",
-                "created_at",
-            ]
-            available_columns = [col for col in target_columns if col in existing_student_columns]
-            if available_columns:
-                insert_columns = ", ".join(available_columns)
-                source_sql = f"INSERT INTO student_entries ({insert_columns}) SELECT {insert_columns} FROM {legacy_table_name}"
-                conn.execute(source_sql)
-            conn.execute(f"DROP TABLE {legacy_table_name}")
-
-        admin_exists = conn.execute(
-            "SELECT id FROM users WHERE username = ? LIMIT 1",
-            ("admin",),
-        ).fetchone()
-        if not admin_exists:
-            conn.execute(
-                "INSERT INTO users (name, email, username, password_hash, role, phone, is_admin) VALUES (?, ?, ?, ?, ?, ?, 1)",
-                ("Administrator", "admin@books.local", "admin", generate_password_hash("admin123"), "admin", "0000000000"),
-            )
+    """Ensure default categories exist in Supabase."""
+    if not supabase:
+        return
+    
+    default_categories = ["Story Books", "Lesson Books", "Mathematics Books", "Others"]
+    try:
+        # Check and insert missing categories
+        existing = supabase.table("categories").select("name").execute()
+        existing_names = {row["name"] for row in existing.data}
+        
+        for cat_name in default_categories:
+            if cat_name not in existing_names:
+                supabase.table("categories").insert({"name": cat_name}).execute()
+        
+        # Ensure admin user exists
+        admin_check = supabase.table("users").select("id").eq("username", "admin").execute()
+        if not admin_check.data:
+            supabase.table("users").insert({
+                "name": "Administrator",
+                "email": "admin@books.local",
+                "username": "admin",
+                "password_hash": generate_password_hash("admin123"),
+                "role": "admin",
+                "phone": "0000000000",
+                "is_admin": True
+            }).execute()
+    except Exception as e:
+        print(f"Warning: Could not initialize database: {e}")
 
 
 @app.before_request
@@ -443,202 +78,252 @@ def setup_session_and_db():
 
 
 def get_user_by_id(user_id):
-    if not user_id:
+    if not user_id or not supabase:
         return None
-    with get_db() as conn:
-        return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    try:
+        response = supabase.table("users").select("*").eq("id", user_id).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error getting user by ID: {e}")
+        return None
 
 
 def get_user_by_username(username):
-    with get_db() as conn:
-        return conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("users").select("*").eq("username", username).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error getting user by username: {e}")
+        return None
 
 
 def get_user_role(user):
     if not user:
         return "student"
-    if user["is_admin"]:
+    if user.get("is_admin"):
         return "admin"
-    role = (user["role"] or "student").strip().lower()
+    role = (user.get("role") or "student").strip().lower()
     return role if role in {"student", "other"} else "student"
 
 
-def conn_total(query, params=()):
-    with get_db() as conn:
-        row = conn.execute(query, params).fetchone()
-        if row is None:
-            return 0
-        if isinstance(row, dict):
-            return next(iter(row.values()))
-        return row[0] if isinstance(row, tuple) else next(iter(row))
+def conn_total(query_type, **kwargs):
+    """Get count from Supabase tables."""
+    if not supabase:
+        return 0
+    try:
+        if query_type == "downloads":
+            response = supabase.table("download_history").select("id", count="exact").execute()
+            return response.count if hasattr(response, 'count') else len(response.data or [])
+        elif query_type == "reviews":
+            response = supabase.table("reviews").select("id", count="exact").execute()
+            return response.count if hasattr(response, 'count') else len(response.data or [])
+        return 0
+    except Exception as e:
+        print(f"Error getting count: {e}")
+        return 0
 
 
 def get_categories():
-    with get_db() as conn:
-        return conn.execute("SELECT * FROM categories ORDER BY name ASC").fetchall()
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("categories").select("*").order("name").execute()
+        return response.data or []
+    except Exception as e:
+        print(f"Error getting categories: {e}")
+        return []
 
 
 def get_books(search=None, category_id=None):
-    with get_db() as conn:
-        query = """
-            SELECT b.*, u.username AS uploader, c.name AS category_name
-            FROM books b
-            LEFT JOIN users u ON u.id = b.uploaded_by
-            LEFT JOIN categories c ON c.id = b.category_id
-        """
-        filters = []
-        params = []
-
+    if not supabase:
+        return []
+    try:
+        query = supabase.table("books").select("*, users(username), categories(name)")
+        
         if search:
-            search_term = f"%{search.strip().lower()}%"
-            filters.append("(LOWER(b.title) LIKE ? OR LOWER(COALESCE(b.author, '')) LIKE ?)")
-            params.extend([search_term, search_term])
-
+            search_lower = search.strip().lower()
+            query = query.or_(f"title.ilike.%{search_lower}%,author.ilike.%{search_lower}%")
+        
         if category_id:
-            filters.append("b.category_id = ?")
-            params.append(category_id)
-
-        if filters:
-            query += " WHERE " + " AND ".join(filters)
-
-        query += " ORDER BY b.uploaded_at DESC, b.id DESC"
-        return conn.execute(query, params).fetchall()
+            query = query.eq("category_id", category_id)
+        
+        response = query.order("uploaded_at", desc=True).order("id", desc=True).execute()
+        
+        # Transform response to match expected format
+        books = []
+        for book in response.data or []:
+            book_item = dict(book)
+            book_item["uploader"] = book.get("users", {}).get("username", "Unknown") if isinstance(book.get("users"), dict) else "Unknown"
+            book_item["category_name"] = book.get("categories", {}).get("name", "Others") if isinstance(book.get("categories"), dict) else "Others"
+            books.append(book_item)
+        
+        return books
+    except Exception as e:
+        print(f"Error getting books: {e}")
+        return []
 
 
 def get_book_by_id(book_id):
-    with get_db() as conn:
-        return conn.execute(
-            """
-            SELECT b.*, u.username AS uploader, c.name AS category_name
-            FROM books b
-            LEFT JOIN users u ON u.id = b.uploaded_by
-            LEFT JOIN categories c ON c.id = b.category_id
-            WHERE b.id = ?
-            """,
-            (book_id,),
-        ).fetchone()
+    if not supabase:
+        return None
+    try:
+        response = supabase.table("books").select("*, users(username), categories(name)").eq("id", book_id).execute()
+        if not response.data:
+            return None
+        book = response.data[0]
+        book["uploader"] = book.get("users", {}).get("username", "Unknown") if isinstance(book.get("users"), dict) else "Unknown"
+        book["category_name"] = book.get("categories", {}).get("name", "Others") if isinstance(book.get("categories"), dict) else "Others"
+        return book
+    except Exception as e:
+        print(f"Error getting book: {e}")
+        return None
 
 
 def get_users():
-    with get_db() as conn:
-        return conn.execute("SELECT * FROM users ORDER BY id DESC").fetchall()
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("users").select("*").order("id", desc=True).execute()
+        return response.data or []
+    except Exception as e:
+        print(f"Error getting users: {e}")
+        return []
 
 
 def get_download_history(user_id=None):
-    with get_db() as conn:
-        query = """
-            SELECT d.id, d.downloaded_at, b.id AS book_id, b.title AS book_title, b.author,
-                   u.id AS user_id, u.username, c.name AS category_name
-            FROM download_history d
-            JOIN books b ON b.id = d.book_id
-            LEFT JOIN users u ON u.id = d.user_id
-            LEFT JOIN categories c ON c.id = b.category_id
-        """
-        params = []
+    if not supabase:
+        return []
+    try:
+        query = supabase.table("download_history").select("*, books(id, title, author), users(id, username), categories(name)")
+        
         if user_id:
-            query += " WHERE d.user_id = ?"
-            params.append(user_id)
-        query += " ORDER BY d.downloaded_at DESC"
-        return conn.execute(query, params).fetchall()
+            query = query.eq("user_id", user_id)
+        
+        response = query.order("downloaded_at", desc=True).execute()
+        
+        # Transform response to match expected format
+        downloads = []
+        for dl in response.data or []:
+            dl_item = {
+                "id": dl.get("id"),
+                "downloaded_at": dl.get("downloaded_at"),
+                "book_id": dl.get("books", {}).get("id"),
+                "book_title": dl.get("books", {}).get("title", "Unknown"),
+                "author": dl.get("books", {}).get("author", "Unknown"),
+                "user_id": dl.get("users", {}).get("id"),
+                "username": dl.get("users", {}).get("username", "Unknown"),
+                "category_name": dl.get("categories", {}).get("name", "Others") if isinstance(dl.get("categories"), dict) else "Others",
+            }
+            downloads.append(dl_item)
+        
+        return downloads
+    except Exception as e:
+        print(f"Error getting download history: {e}")
+        return []
 
 
 def get_recent_activity(limit=8):
-    with get_db() as conn:
-        activity = []
-
-        for row in conn.execute(
-            "SELECT 'user' AS kind, name AS label, created_at AS created_at FROM users ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall():
+    if not supabase:
+        return []
+    
+    activity = []
+    
+    try:
+        # Recent users
+        users = supabase.table("users").select("name, created_at").order("created_at", desc=True).limit(limit).execute()
+        for user in users.data or []:
             activity.append({
-                "kind": row["kind"],
-                "label": f"New user: {row['label']}",
-                "created_at": row["created_at"],
+                "kind": "user",
+                "label": f"New user: {user['name']}",
+                "created_at": user.get("created_at"),
             })
-
-        for row in conn.execute(
-            "SELECT 'book' AS kind, title AS label, uploaded_at AS created_at FROM books ORDER BY uploaded_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall():
+        
+        # Recent books
+        books = supabase.table("books").select("title, uploaded_at").order("uploaded_at", desc=True).limit(limit).execute()
+        for book in books.data or []:
             activity.append({
-                "kind": row["kind"],
-                "label": f"New book: {row['label']}",
-                "created_at": row["created_at"],
+                "kind": "book",
+                "label": f"New book: {book['title']}",
+                "created_at": book.get("uploaded_at"),
             })
-
-        for row in conn.execute(
-            """
-            SELECT 'download' AS kind, b.title AS label, d.downloaded_at AS created_at
-            FROM download_history d
-            JOIN books b ON b.id = d.book_id
-            ORDER BY d.downloaded_at DESC LIMIT ?
-            """,
-            (limit,),
-        ).fetchall():
+        
+        # Recent downloads
+        downloads = supabase.table("download_history").select("*, books(title)").order("downloaded_at", desc=True).limit(limit).execute()
+        for dl in downloads.data or []:
             activity.append({
-                "kind": row["kind"],
-                "label": f"Downloaded: {row['label']}",
-                "created_at": row["created_at"],
+                "kind": "download",
+                "label": f"Downloaded: {dl.get('books', {}).get('title', 'Unknown')}",
+                "created_at": dl.get("downloaded_at"),
             })
-
-        for row in conn.execute(
-            """
-            SELECT 'review' AS kind, b.title AS label, r.created_at AS created_at
-            FROM reviews r
-            JOIN books b ON b.id = r.book_id
-            ORDER BY r.created_at DESC LIMIT ?
-            """,
-            (limit,),
-        ).fetchall():
+        
+        # Recent reviews
+        reviews = supabase.table("reviews").select("*, books(title)").order("created_at", desc=True).limit(limit).execute()
+        for review in reviews.data or []:
             activity.append({
-                "kind": row["kind"],
-                "label": f"Review: {row['label']}",
-                "created_at": row["created_at"],
+                "kind": "review",
+                "label": f"Review: {review.get('books', {}).get('title', 'Unknown')}",
+                "created_at": review.get("created_at"),
             })
-
-        activity.sort(key=lambda item: item["created_at"], reverse=True)
+        
+        activity.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return activity[:limit]
+    except Exception as e:
+        print(f"Error getting recent activity: {e}")
+        return []
 
 
 def get_student_entries():
-    with get_db() as conn:
-        return conn.execute(
-            """
-            SELECT
-                s.id,
-                s.name,
-                u.username,
-                s.email,
-                COALESCE(NULLIF(s.phone1, ''), u.phone) AS phone,
-                s.institution_name AS institution,
-                s.student_no AS student_id,
-                u.role
-            FROM student_entries s
-            JOIN users u ON u.id = s.user_id
-            ORDER BY s.id DESC
-            """
-        ).fetchall()
+    if not supabase:
+        return []
+    try:
+        response = supabase.table("student_entries").select("*, users(username, phone, role)").order("id", desc=True).execute()
+        
+        entries = []
+        for entry in response.data or []:
+            user_data = entry.get("users", {}) if isinstance(entry.get("users"), dict) else {}
+            entry_item = {
+                "id": entry.get("id"),
+                "name": entry.get("name"),
+                "username": user_data.get("username", "Unknown"),
+                "email": entry.get("email"),
+                "phone": entry.get("phone1") or user_data.get("phone", ""),
+                "institution": entry.get("institution_name"),
+                "student_id": entry.get("student_no"),
+                "role": user_data.get("role", "student"),
+            }
+            entries.append(entry_item)
+        
+        return entries
+    except Exception as e:
+        print(f"Error getting student entries: {e}")
+        return []
 
 
 @app.route("/")
 def home():
     user = get_user_by_id(session.get("user_id"))
-    if user and user["is_admin"]:
+    if user and user.get("is_admin"):
         return redirect(url_for("admin_dashboard"))
 
     search_term = request.args.get("q", "", type=str).strip()
-    selected_category_id = request.args.get("category_id", "", type=int)
+    selected_category_id = request.args.get("category_id", "", type=int) or None
     books = get_books(search=search_term, category_id=selected_category_id)
     student_entry = None
-    if user and not user["is_admin"]:
-        with get_db() as conn:
-            student_entry = conn.execute("SELECT * FROM student_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user["id"],)).fetchone()
+    
+    if user and not user.get("is_admin"):
+        try:
+            response = supabase.table("student_entries").select("*").eq("user_id", user["id"]).order("id", desc=True).limit(1).execute()
+            student_entry = response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error getting student entry: {e}")
 
     return render_template(
         "index.html",
         current_user=user,
         logged_in=bool(user),
-        owner_logged=bool(user and user["is_admin"]),
+        owner_logged=bool(user and user.get("is_admin")),
         books=books,
         student_entry=student_entry,
         categories=get_categories(),
@@ -663,9 +348,9 @@ def login():
     role = get_user_role(user)
     session["role"] = role
     session["logged_in"] = True
-    session["is_admin"] = bool(user["is_admin"])
+    session["is_admin"] = bool(user.get("is_admin"))
     flash("Login successful.", "success")
-    if user["is_admin"]:
+    if user.get("is_admin"):
         return redirect(url_for("admin_dashboard"))
     return redirect(url_for("home"))
 
@@ -690,15 +375,25 @@ def register():
         flash("This username is already taken.", "error")
         return redirect(url_for("home"))
 
-    with get_db() as conn:
-        try:
-            conn.execute(
-                "INSERT INTO users (name, email, username, password_hash, role, phone) VALUES (?, ?, ?, ?, ?, ?)",
-                (name, email, username, generate_password_hash(password), role, phone or None),
-            )
-        except (sqlite3.IntegrityError, psycopg.IntegrityError):
+    if not supabase:
+        flash("Database error. Please try again later.", "error")
+        return redirect(url_for("home"))
+    
+    try:
+        supabase.table("users").insert({
+            "name": name,
+            "email": email,
+            "username": username,
+            "password_hash": generate_password_hash(password),
+            "role": role,
+            "phone": phone or None,
+        }).execute()
+    except Exception as e:
+        if "duplicate" in str(e).lower():
             flash("A user with that email already exists.", "error")
-            return redirect(url_for("home"))
+        else:
+            flash(f"Registration error: {e}", "error")
+        return redirect(url_for("home"))
 
     user = get_user_by_username(username)
     session.clear()
@@ -706,7 +401,7 @@ def register():
     session["username"] = user["username"]
     session["role"] = get_user_role(user)
     session["logged_in"] = True
-    session["is_admin"] = bool(user["is_admin"])
+    session["is_admin"] = bool(user.get("is_admin"))
     flash("Registration successful! You can now download books.", "success")
     return redirect(url_for("home"))
 
@@ -759,13 +454,18 @@ def change_password():
         flash("Your current password is incorrect.", "error")
         return redirect(url_for("settings_page"))
 
-    with get_db() as conn:
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(new_password), session["user_id"]),
-        )
-
-    flash("Your password was changed successfully.", "success")
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("settings_page"))
+    
+    try:
+        supabase.table("users").update({
+            "password_hash": generate_password_hash(new_password)
+        }).eq("id", session["user_id"]).execute()
+        flash("Your password was changed successfully.", "success")
+    except Exception as e:
+        flash(f"Error changing password: {e}", "error")
+    
     return redirect(url_for("settings_page"))
 
 
@@ -787,33 +487,43 @@ def delete_account():
         flash("Please confirm that you want to permanently delete your account.", "error")
         return redirect(url_for("settings_page"))
 
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("settings_page"))
+    
     user_id = session["user_id"]
-    with get_db() as conn:
-        uploaded_books = conn.execute(
-            "SELECT id, filename FROM books WHERE uploaded_by = ?",
-            (user_id,),
-        ).fetchall()
-
-        uploaded_book_ids = [book["id"] for book in uploaded_books]
+    
+    try:
+        # Get uploaded books
+        uploaded_books = supabase.table("books").select("id, filename").eq("uploaded_by", user_id).execute()
+        uploaded_book_ids = [book["id"] for book in uploaded_books.data or []]
+        
+        # Delete reviews and downloads for uploaded books
         if uploaded_book_ids:
-            placeholders = ", ".join("?" for _ in uploaded_book_ids)
-            conn.execute(f"DELETE FROM reviews WHERE book_id IN ({placeholders})", tuple(uploaded_book_ids))
-            conn.execute(f"DELETE FROM download_history WHERE book_id IN ({placeholders})", tuple(uploaded_book_ids))
-
-            for book in uploaded_books:
+            for book_id in uploaded_book_ids:
+                supabase.table("reviews").delete().eq("book_id", book_id).execute()
+                supabase.table("download_history").delete().eq("book_id", book_id).execute()
+            
+            # Delete uploaded book files
+            for book in uploaded_books.data or []:
                 file_path = os.path.join(UPLOAD_FOLDER, book["filename"])
                 if os.path.exists(file_path):
                     os.remove(file_path)
-
-            conn.execute("DELETE FROM books WHERE uploaded_by = ?", (user_id,))
-
-        conn.execute("DELETE FROM reviews WHERE user_id = ?", (user_id,))
-        conn.execute("DELETE FROM download_history WHERE user_id = ?", (user_id,))
-        conn.execute("DELETE FROM student_entries WHERE user_id = ?", (user_id,))
-        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-
-    session.clear()
-    flash("Your account and related data were permanently deleted.", "success")
+            
+            # Delete books
+            supabase.table("books").delete().eq("uploaded_by", user_id).execute()
+        
+        # Delete user data
+        supabase.table("reviews").delete().eq("user_id", user_id).execute()
+        supabase.table("download_history").delete().eq("user_id", user_id).execute()
+        supabase.table("student_entries").delete().eq("user_id", user_id).execute()
+        supabase.table("users").delete().eq("id", user_id).execute()
+        
+        session.clear()
+        flash("Your account and related data were permanently deleted.", "success")
+    except Exception as e:
+        flash(f"Error deleting account: {e}", "error")
+    
     return redirect(url_for("home"))
 
 
@@ -844,41 +554,37 @@ def submit_details():
         flash("Name, phone number and address are required.", "error")
         return redirect(url_for("home"))
 
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("home"))
+
     student_no = str(random.randint(100000, 999999))
 
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO student_entries (
-                user_id, name, email, date_of_birth,
-                fathers_name, mothers_name, phone1, phone2,
-                emergency_contact, address, pincode, institution_name,
-                blood_group, nationality, aadhaar_number, religion, parent_occupation, student_no
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                session["user_id"],
-                name,
-                email,
-                date_of_birth,
-                fathers_name,
-                mothers_name,
-                phone1,
-                phone2,
-                emergency_contact,
-                address,
-                pincode,
-                institution_name,
-                blood_group,
-                nationality,
-                aadhaar_number,
-                religion,
-                parent_occupation,
-                student_no,
-            ),
-        )
-
-    flash("Your details were saved successfully.", "success")
+    try:
+        supabase.table("student_entries").insert({
+            "user_id": session["user_id"],
+            "name": name,
+            "email": email,
+            "date_of_birth": date_of_birth,
+            "fathers_name": fathers_name,
+            "mothers_name": mothers_name,
+            "phone1": phone1,
+            "phone2": phone2,
+            "emergency_contact": emergency_contact,
+            "address": address,
+            "pincode": pincode,
+            "institution_name": institution_name,
+            "blood_group": blood_group,
+            "nationality": nationality,
+            "aadhaar_number": aadhaar_number,
+            "religion": religion,
+            "parent_occupation": parent_occupation,
+            "student_no": student_no,
+        }).execute()
+        flash("Your details were saved successfully.", "success")
+    except Exception as e:
+        flash(f"Error saving details: {e}", "error")
+    
     return redirect(url_for("home"))
 
 
@@ -891,8 +597,9 @@ def upload_file():
     title = request.form.get("title", "").strip()
     author = request.form.get("author", "").strip()
     description = request.form.get("description", "").strip()
-    category_id = request.form.get("category_id", "", type=int)
+    category_id = request.form.get("category_id", "", type=int) or None
     uploaded = request.files.get("file")
+    
     if not uploaded or uploaded.filename == "":
         flash("Please choose a file to upload.", "error")
         return redirect(url_for("home"))
@@ -907,30 +614,35 @@ def upload_file():
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     uploaded.save(file_path)
 
-    with get_db() as conn:
-        existing_category = conn.execute(
-            "SELECT id FROM categories WHERE id = ? LIMIT 1",
-            (category_id,),
-        ).fetchone()
-        if not existing_category:
-            category_id = conn.execute(
-                "SELECT id FROM categories WHERE name = 'Others' LIMIT 1"
-            ).fetchone()["id"]
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("home"))
 
-        conn.execute(
-            "INSERT INTO books (title, filename, original_name, author, description, category_id, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                title or os.path.splitext(original_name)[0],
-                filename,
-                original_name,
-                author or "Unknown Author",
-                description or "No description available.",
-                category_id,
-                session["user_id"],
-            ),
-        )
-
-    flash(f"{title or original_name} uploaded successfully!", "success")
+    try:
+        # Verify category exists, default to Others if not
+        if category_id:
+            existing_category = supabase.table("categories").select("id").eq("id", category_id).execute()
+            if not existing_category.data:
+                others = supabase.table("categories").select("id").eq("name", "Others").execute()
+                category_id = others.data[0]["id"] if others.data else None
+        else:
+            others = supabase.table("categories").select("id").eq("name", "Others").execute()
+            category_id = others.data[0]["id"] if others.data else None
+        
+        supabase.table("books").insert({
+            "title": title or os.path.splitext(original_name)[0],
+            "filename": filename,
+            "original_name": original_name,
+            "author": author or "Unknown Author",
+            "description": description or "No description available.",
+            "category_id": category_id,
+            "uploaded_by": session["user_id"],
+        }).execute()
+        
+        flash(f"{title or original_name} uploaded successfully!", "success")
+    except Exception as e:
+        flash(f"Error uploading book: {e}", "error")
+    
     return redirect(url_for("home"))
 
 
@@ -959,8 +671,8 @@ def admin_dashboard():
         "total_users": len(get_users()),
         "total_books": len(get_books()),
         "total_categories": len(get_categories()),
-        "total_downloads": conn_total("SELECT COUNT(*) FROM download_history"),
-        "total_reviews": conn_total("SELECT COUNT(*) FROM reviews"),
+        "total_downloads": conn_total("downloads"),
+        "total_reviews": conn_total("reviews"),
     }
 
     return render_template(
@@ -981,14 +693,24 @@ def delete_book(book_id):
         flash("Only the admin can remove books.", "error")
         return redirect(url_for("home"))
 
-    with get_db() as conn:
-        book = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
-        if book:
-            file_path = os.path.join(UPLOAD_FOLDER, book["filename"])
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("admin_dashboard"))
+
+    try:
+        book = supabase.table("books").select("*").eq("id", book_id).execute()
+        if book.data:
+            book_data = book.data[0]
+            file_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
             if os.path.exists(file_path):
                 os.remove(file_path)
-            conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
-            flash(f"{book['title']} was removed.", "success")
+            
+            supabase.table("books").delete().eq("id", book_id).execute()
+            flash(f"{book_data['title']} was removed.", "success")
+        else:
+            flash("Book not found.", "error")
+    except Exception as e:
+        flash(f"Error deleting book: {e}", "error")
 
     return redirect(url_for("admin_dashboard"))
 
@@ -999,18 +721,28 @@ def download_book(book_id):
         flash("Please log in to download books.", "error")
         return redirect(url_for("home"))
 
-    with get_db() as conn:
-        book = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
-        if not book:
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("home"))
+
+    try:
+        book = supabase.table("books").select("*").eq("id", book_id).execute()
+        if not book.data:
             flash("Book not found.", "error")
             return redirect(url_for("home"))
-
-        conn.execute(
-            "INSERT INTO download_history (user_id, book_id) VALUES (?, ?)",
-            (session["user_id"], book_id),
-        )
-
-    return send_from_directory(UPLOAD_FOLDER, book["filename"], as_attachment=True)
+        
+        book_data = book.data[0]
+        
+        # Record download
+        supabase.table("download_history").insert({
+            "user_id": session["user_id"],
+            "book_id": book_id,
+        }).execute()
+        
+        return send_from_directory(UPLOAD_FOLDER, book_data["filename"], as_attachment=True)
+    except Exception as e:
+        flash(f"Error downloading book: {e}", "error")
+        return redirect(url_for("home"))
 
 
 @app.route("/my-downloads")

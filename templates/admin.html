@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script defer src="{{ url_for('static', filename='script.js') }}"></script>
+  </head>
+  <body>
+    <div class="page-shell admin-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">A</div>
+          <div>
+            <p class="eyebrow">Control panel</p>
+            <h1>Admin Dashboard</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
+        </div>
+      </header>
+
+      <main class="admin-main">
+        <section class="stats-grid">
+          <div class="stat-card">
+            <span>Total Users</span>
+            <strong>{{ stats['total_users'] }}</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Books</span>
+            <strong>{{ stats['total_books'] }}</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Categories</span>
+            <strong>{{ stats['total_categories'] }}</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Downloads</span>
+            <strong>{{ stats['total_downloads'] }}</strong>
+          </div>
+          <div class="stat-card">
+            <span>Total Reviews</span>
+            <strong>{{ stats['total_reviews'] }}</strong>
+          </div>
+        </section>
+
+        <nav class="admin-tabs" aria-label="Admin sections">
+          <button type="button" class="admin-tab active" data-target="inventory-tab">Book Inventory</button>
+          <button type="button" class="admin-tab" data-target="upload-tab">Upload</button>
+          <button type="button" class="admin-tab" data-target="students-tab">Student Details</button>
+          <button type="button" class="admin-tab" data-target="users-tab">Users</button>
+          <button type="button" class="admin-tab" data-target="activity-tab">Recent Activity</button>
+        </nav>
+
+        <section id="inventory-tab" class="admin-panel active">
+          <div class="panel-inner">
+            <div class="section-header admin-header">
+              <h2>Book Inventory</h2>
+            </div>
+
+            {% if books %}
+              <div class="table-wrap">
+                <table class="student-table book-table">
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Author</th>
+                      <th>Category</th>
+                      <th>Description</th>
+                      <th>Uploaded</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for book in books %}
+                      <tr>
+                        <td>{{ book['title'] }}</td>
+                        <td>{{ book['author'] or 'Unknown Author' }}</td>
+                        <td>{{ book['category_name'] or 'General' }}</td>
+                        <td>{{ book['description'] or 'No description available.' }}</td>
+                        <td>{{ book['uploaded_at'][:10] if book['uploaded_at'] else '—' }}</td>
+                        <td>
+                          <div class="button-row compact-actions">
+                            <a href="{{ url_for('served_file', filename=book['filename']) }}" class="primary-button small" download>Download</a>
+                            <form method="post" action="{{ url_for('delete_book', book_id=book['id']) }}">
+                              <button type="submit" class="secondary-button small danger">Delete</button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="empty-state">No uploaded books yet.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section id="upload-tab" class="admin-panel">
+          <div class="panel-inner">
+            <h2>Upload New Books</h2>
+            <form method="post" action="{{ url_for('upload_file') }}" enctype="multipart/form-data" class="stacked-form">
+              <label>
+                <span>Book Title</span>
+                <input type="text" name="title" placeholder="Enter book title" required />
+              </label>
+              <label>
+                <span>Author</span>
+                <input type="text" name="author" placeholder="Enter author name" />
+              </label>
+              <label>
+                <span>Category</span>
+                <select name="category_id">
+                  {% for category in categories %}
+                    <option value="{{ category['id'] }}">{{ category['name'] }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label>
+                <span>Description</span>
+                <textarea name="description" rows="4" placeholder="Optional short description"></textarea>
+              </label>
+              <label>
+                <span>Choose file</span>
+                <input type="file" name="file" required />
+              </label>
+              <button type="submit" class="primary-button">Upload</button>
+            </form>
+          </div>
+        </section>
+
+        <section id="students-tab" class="admin-panel">
+          <div class="panel-inner">
+            <h2>Student Details</h2>
+            {% if student_entries %}
+              <div class="table-wrap">
+                <table class="student-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Institution</th>
+                      <th>Student ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for entry in student_entries %}
+                      <tr>
+                        <td>{{ entry['name'] }}</td>
+                        <td>{{ entry['username'] }}</td>
+                        <td>{{ entry['email'] or '—' }}</td>
+                        <td>{{ entry['phone'] or '—' }}</td>
+                        <td>{{ entry['institution'] or '—' }}</td>
+                        <td>{{ entry['student_id'] or '—' }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="empty-state">No student details submitted yet.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section id="users-tab" class="admin-panel">
+          <div class="panel-inner">
+            <h2>Users</h2>
+            <div class="admin-list">
+              {% for user in users %}
+                <div class="admin-item compact">
+                  <div>
+                    <h3>{{ user['username'] }}</h3>
+                    <p>{{ user['email'] }} • {{ user['role'] }}</p>
+                  </div>
+                  <span class="role-badge {% if user['is_admin'] %}admin{% else %}user{% endif %}">
+                    {{ 'Admin' if user['is_admin'] else user['role'] }}
+                  </span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+
+        <section id="activity-tab" class="admin-panel">
+          <div class="panel-inner">
+            <h2>Recent Activity</h2>
+            {% if recent_activity %}
+              <div class="activity-list">
+                {% for item in recent_activity %}
+                  <div class="activity-item">
+                    <span class="activity-kind {{ item['kind'] }}">{{ item['kind']|title }}</span>
+                    <div>
+                      <h3>{{ item['label'] }}</h3>
+                      <p>{{ item['created_at'] }}</p>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="empty-state">No recent activity yet.</p>
+            {% endif %}
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
