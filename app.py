@@ -706,6 +706,10 @@ def delete_book(book_id):
         book = supabase.table("books").select("*").eq("id", book_id).execute()
         if book.data:
             book_data = book.data[0]
+            # Remove dependent rows first when foreign keys are not configured
+            # with cascading deletes in Supabase.
+            supabase.table("reviews").delete().eq("book_id", book_id).execute()
+            supabase.table("download_history").delete().eq("book_id", book_id).execute()
             file_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -737,6 +741,10 @@ def download_book(book_id):
             return redirect(url_for("home"))
         
         book_data = book.data[0]
+        file_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
+        if not os.path.isfile(file_path):
+            flash("The book file is missing from the server.", "error")
+            return redirect(url_for("home"))
         
         # Record download
         supabase.table("download_history").insert({
@@ -744,7 +752,12 @@ def download_book(book_id):
             "book_id": book_id,
         }).execute()
         
-        return send_from_directory(UPLOAD_FOLDER, book_data["filename"], as_attachment=True)
+        return send_from_directory(
+            UPLOAD_FOLDER,
+            book_data["filename"],
+            as_attachment=True,
+            download_name=book_data.get("original_name") or book_data["filename"],
+        )
     except Exception as e:
         flash(f"Error downloading book: {e}", "error")
         return redirect(url_for("home"))
