@@ -1,17 +1,20 @@
 import os
 import random
+import io
+import mimetypes
+import uuid
 from datetime import timedelta
 from dotenv import load_dotenv
 from supabase import create_client
 
-from flask import Flask, flash, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, flash, redirect, render_template, request, send_file, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # Load environment variables from the project file regardless of launch directory.
-load_dotenv(os.path.join(BASE_DIR, "supabase.env"))
+load_dotenv(os.path.join(BASE_DIR, "supabase.env"), override=True)
 
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = (
@@ -32,6 +35,7 @@ supabase = create_client(supabase_url, supabase_key)
 app = Flask(__name__)
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "books")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config.update(
@@ -91,6 +95,16 @@ def get_user_by_id(user_id):
     except Exception as e:
         print(f"Error getting user by ID: {e}")
         return None
+
+
+def remove_storage_file(filename):
+    """Remove a file from Storage, ignoring cleanup errors during a larger operation."""
+    if not filename or not supabase:
+        return
+    try:
+        supabase.storage.from_(STORAGE_BUCKET).remove([filename])
+    except Exception as e:
+        print(f"Warning: Could not remove storage object {filename}: {e}")
 
 
 def get_user_by_username(username):
@@ -509,11 +523,13 @@ def delete_account():
                 supabase.table("reviews").delete().eq("book_id", book_id).execute()
                 supabase.table("download_history").delete().eq("book_id", book_id).execute()
             
-            # Delete uploaded book files
+            # Delete uploaded book files from Storage or the legacy local folder.
             for book in uploaded_books.data or []:
                 file_path = os.path.join(UPLOAD_FOLDER, book["filename"])
                 if os.path.exists(file_path):
                     os.remove(file_path)
+                else:
+                    remove_storage_file(book["filename"])
             
             # Delete books
             supabase.table("books").delete().eq("uploaded_by", user_id).execute()
@@ -615,15 +631,24 @@ def upload_file():
         flash("Invalid file name.", "error")
         return redirect(url_for("home"))
 
-    filename = f"{len(os.listdir(UPLOAD_FOLDER)) + 1}_{safe_name}"
-    file_path = os.path.join(UPLOAD_FOLDER, filename)
-    uploaded.save(file_path)
+    filename = f"{uuid.uuid4().hex}_{safe_name}"
 
     if not supabase:
         flash("Database error.", "error")
         return redirect(url_for("home"))
 
+    storage_uploaded = False
     try:
+        supabase.storage.from_(STORAGE_BUCKET).upload(
+            filename,
+            uploaded.read(),
+            {
+                "content-type": uploaded.mimetype or "application/octet-stream",
+                "upsert": False,
+            },
+        )
+        storage_uploaded = True
+
         # Verify category exists, default to Others if not
         if category_id:
             existing_category = supabase.table("categories").select("id").eq("id", category_id).execute()
@@ -646,7 +671,9 @@ def upload_file():
         
         flash(f"{title or original_name} uploaded successfully!", "success")
     except Exception as e:
-        flash(f"Error uploading book: {e}", "error")
+        if storage_uploaded:
+            remove_storage_file(filename)
+        flash(f"Error uploading book to Supabase bucket '{STORAGE_BUCKET}': {e}", "error")
     
     return redirect(url_for("home"))
 
@@ -713,6 +740,8 @@ def delete_book(book_id):
             file_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
             if os.path.exists(file_path):
                 os.remove(file_path)
+            else:
+                remove_storage_file(book_data.get("filename"))
             
             supabase.table("books").delete().eq("id", book_id).execute()
             flash(f"{book_data['title']} was removed.", "success")
@@ -741,22 +770,28 @@ def download_book(book_id):
             return redirect(url_for("home"))
         
         book_data = book.data[0]
-        file_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
-        if not os.path.isfile(file_path):
-            flash("The book file is missing from the server.", "error")
-            return redirect(url_for("home"))
-        
         # Record download
         supabase.table("download_history").insert({
             "user_id": session["user_id"],
             "book_id": book_id,
         }).execute()
-        
-        return send_from_directory(
-            UPLOAD_FOLDER,
-            book_data["filename"],
+
+        download_name = book_data.get("original_name") or book_data["filename"]
+        local_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
+        if os.path.isfile(local_path):
+            return send_from_directory(
+                UPLOAD_FOLDER,
+                book_data["filename"],
+                as_attachment=True,
+                download_name=download_name,
+            )
+
+        file_data = supabase.storage.from_(STORAGE_BUCKET).download(book_data["filename"])
+        return send_file(
+            io.BytesIO(file_data),
             as_attachment=True,
-            download_name=book_data.get("original_name") or book_data["filename"],
+            download_name=download_name,
+            mimetype=mimetypes.guess_type(download_name)[0] or "application/octet-stream",
         )
     except Exception as e:
         flash(f"Error downloading book: {e}", "error")
