@@ -41,16 +41,26 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config.update(
     SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "rohith-books-secret-2026"),
     UPLOAD_FOLDER=UPLOAD_FOLDER,
+    MAX_CONTENT_LENGTH=50 * 1024 * 1024,
     PERMANENT_SESSION_LIFETIME=timedelta(days=7),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=False,
 )
 
+@app.template_filter("slugify")
+def slugify_filter(s):
+    if not s:
+        return ""
+    import re
+    return re.sub(r'[\W_]+', '-', str(s)).strip('-').lower()
+
+_db_initialized = False
 
 def init_db():
     """Ensure default categories exist in Supabase."""
-    if not supabase:
+    global _db_initialized
+    if _db_initialized or not supabase:
         return
     
     default_categories = ["Story Books", "Lesson Books", "Mathematics Books", "Others"]
@@ -70,11 +80,12 @@ def init_db():
                 "name": "Administrator",
                 "email": "admin@books.local",
                 "username": "admin",
-                "password_hash": generate_password_hash("admin123"),
+                "password_hash": generate_password_hash("admin@1406"),
                 "role": "admin",
                 "phone": "0000000000",
                 "is_admin": True
             }).execute()
+        _db_initialized = True
     except Exception as e:
         print(f"Warning: Could not initialize database: {e}")
 
@@ -172,10 +183,34 @@ def get_books(search=None, category_id=None):
         
         # Transform response to match expected format
         books = []
+        rev_data = {}
+        dl_data = {}
+        try:
+            rev_res = supabase.table("reviews").select("book_id, rating").execute()
+            for r in (rev_res.data or []):
+                bid = r["book_id"]
+                if bid not in rev_data:
+                    rev_data[bid] = []
+                rev_data[bid].append(r["rating"])
+        except Exception:
+            pass
+
+        try:
+            dl_res = supabase.table("download_history").select("book_id").execute()
+            for d in (dl_res.data or []):
+                bid = d["book_id"]
+                dl_data[bid] = dl_data.get(bid, 0) + 1
+        except Exception:
+            pass
+
         for book in response.data or []:
             book_item = dict(book)
             book_item["uploader"] = book.get("users", {}).get("username", "Unknown") if isinstance(book.get("users"), dict) else "Unknown"
             book_item["category_name"] = book.get("categories", {}).get("name", "Others") if isinstance(book.get("categories"), dict) else "Others"
+            ratings = rev_data.get(book["id"], [])
+            book_item["review_count"] = len(ratings)
+            book_item["avg_rating"] = round(sum(ratings) / len(ratings), 1) if ratings else 0.0
+            book_item["download_count"] = dl_data.get(book["id"], 0)
             books.append(book_item)
         
         return books
@@ -194,10 +229,36 @@ def get_book_by_id(book_id):
         book = response.data[0]
         book["uploader"] = book.get("users", {}).get("username", "Unknown") if isinstance(book.get("users"), dict) else "Unknown"
         book["category_name"] = book.get("categories", {}).get("name", "Others") if isinstance(book.get("categories"), dict) else "Others"
+        try:
+            rev_res = supabase.table("reviews").select("rating").eq("book_id", book_id).execute()
+            ratings = [r["rating"] for r in (rev_res.data or [])]
+            book["review_count"] = len(ratings)
+            book["avg_rating"] = round(sum(ratings) / len(ratings), 1) if ratings else 0.0
+        except Exception:
+            book["review_count"] = 0
+            book["avg_rating"] = 0.0
+
+        try:
+            dl_res = supabase.table("download_history").select("id", count="exact").eq("book_id", book_id).execute()
+            book["download_count"] = dl_res.count if hasattr(dl_res, 'count') else len(dl_res.data or [])
+        except Exception:
+            book["download_count"] = 0
+
         return book
     except Exception as e:
         print(f"Error getting book: {e}")
         return None
+
+
+def get_book_reviews(book_id):
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("reviews").select("*").eq("book_id", book_id).order("created_at", desc=True).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Error getting reviews: {e}")
+        return []
 
 
 def get_users():
@@ -215,25 +276,26 @@ def get_download_history(user_id=None):
     if not supabase:
         return []
     try:
-        query = supabase.table("download_history").select("*, books(id, title, author), users(id, username), categories(name)")
+        query = supabase.table("download_history").select("*, books(id, title, author, categories(name)), users(id, username)")
         
         if user_id:
             query = query.eq("user_id", user_id)
         
         response = query.order("downloaded_at", desc=True).execute()
         
-        # Transform response to match expected format
         downloads = []
         for dl in response.data or []:
+            book_info = dl.get("books") or {}
+            cat_info = book_info.get("categories") or {}
             dl_item = {
                 "id": dl.get("id"),
                 "downloaded_at": dl.get("downloaded_at"),
-                "book_id": dl.get("books", {}).get("id"),
-                "book_title": dl.get("books", {}).get("title", "Unknown"),
-                "author": dl.get("books", {}).get("author", "Unknown"),
+                "book_id": book_info.get("id"),
+                "book_title": book_info.get("title", "Unknown"),
+                "author": book_info.get("author", "Unknown"),
                 "user_id": dl.get("users", {}).get("id"),
                 "username": dl.get("users", {}).get("username", "Unknown"),
-                "category_name": dl.get("categories", {}).get("name", "Others") if isinstance(dl.get("categories"), dict) else "Others",
+                "category_name": cat_info.get("name", "Others") if isinstance(cat_info, dict) else "Others",
             }
             downloads.append(dl_item)
         
@@ -326,10 +388,12 @@ def home():
     if user and user.get("is_admin"):
         return redirect(url_for("admin_dashboard"))
 
+    section = request.args.get("section", "", type=str).strip()
     search_term = request.args.get("q", "", type=str).strip()
     selected_category_id = request.args.get("category_id", "", type=int) or None
     books = get_books(search=search_term, category_id=selected_category_id)
     student_entry = None
+    downloaded_book_ids = set()
     
     if user and not user.get("is_admin"):
         try:
@@ -338,17 +402,82 @@ def home():
         except Exception as e:
             print(f"Error getting student entry: {e}")
 
+        try:
+            dl_res = supabase.table("download_history").select("book_id").eq("user_id", user["id"]).execute()
+            downloaded_book_ids = {r["book_id"] for r in (dl_res.data or [])}
+        except Exception as e:
+            print(f"Error getting user downloaded books: {e}")
+
+    default_section = section or ("books" if user else "landing")
+
     return render_template(
         "index.html",
         current_user=user,
         logged_in=bool(user),
         owner_logged=bool(user and user.get("is_admin")),
         books=books,
+        downloaded_book_ids=downloaded_book_ids,
         student_entry=student_entry,
         categories=get_categories(),
         selected_category_id=selected_category_id,
         search_term=search_term,
+        recent_activity=get_recent_activity(),
+        default_section=default_section,
     )
+
+
+@app.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    account_id = request.form.get("account_id", "").strip()
+    if not account_id:
+        account_id = request.form.get("username", "").strip() or request.form.get("email", "").strip()
+
+    new_password = request.form.get("new_password", "").strip()
+    confirm_password = request.form.get("confirm_password", "").strip()
+
+    if not account_id or not new_password or not confirm_password:
+        flash("Please fill in all required fields.", "error")
+        return redirect(url_for("home", section="auth"))
+
+    if new_password != confirm_password:
+        flash("New password and confirmation do not match.", "error")
+        return redirect(url_for("home", section="auth"))
+
+    if len(new_password) < 6:
+        flash("Password must be at least 6 characters long.", "error")
+        return redirect(url_for("home", section="auth"))
+
+    if not supabase:
+        flash("Database error. Please try again later.", "error")
+        return redirect(url_for("home", section="auth"))
+
+    user = None
+    try:
+        # 1. Search by username (case-insensitive)
+        res_uname = supabase.table("users").select("*").ilike("username", account_id).execute()
+        if res_uname.data:
+            user = res_uname.data[0]
+        else:
+            # 2. Search by email (case-insensitive)
+            res_email = supabase.table("users").select("*").ilike("email", account_id).execute()
+            if res_email.data:
+                user = res_email.data[0]
+    except Exception as e:
+        print(f"Error finding user for reset: {e}")
+
+    if not user:
+        flash(f"No account found matching '{account_id}'.", "error")
+        return redirect(url_for("home", section="auth"))
+
+    try:
+        supabase.table("users").update({
+            "password_hash": generate_password_hash(new_password)
+        }).eq("id", user["id"]).execute()
+        flash(f"Password reset successfully for '{user.get('username')}'! Please log in with your new password.", "success")
+    except Exception as e:
+        flash(f"Error resetting password: {e}", "error")
+
+    return redirect(url_for("home", section="auth"))
 
 
 @app.route("/login", methods=["POST"])
@@ -444,6 +573,37 @@ def settings_page():
         logged_in=True,
         owner_logged=bool(session.get("is_admin")),
     )
+
+
+@app.route("/settings/update-profile", methods=["POST"])
+def update_profile():
+    if not session.get("user_id"):
+        flash("Please log in to update your profile.", "error")
+        return redirect(url_for("home"))
+
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    phone = request.form.get("phone", "").strip()
+
+    if not name or not email:
+        flash("Name and email are required.", "error")
+        return redirect(url_for("settings_page"))
+
+    if not supabase:
+        flash("Database error.", "error")
+        return redirect(url_for("settings_page"))
+
+    try:
+        supabase.table("users").update({
+            "name": name,
+            "email": email,
+            "phone": phone or None,
+        }).eq("id", session["user_id"]).execute()
+        flash("Profile updated successfully.", "success")
+    except Exception as e:
+        flash(f"Error updating profile: {e}", "error")
+
+    return redirect(url_for("settings_page"))
 
 
 @app.route("/settings/change-password", methods=["POST"])
@@ -571,8 +731,13 @@ def submit_details():
     religion = request.form.get("religion", "").strip()
     parent_occupation = request.form.get("parent_occupation", "").strip()
 
-    if not all([name, phone1, address]):
-        flash("Name, phone number and address are required.", "error")
+    mandatory_fields = [
+        name, email, date_of_birth, fathers_name, mothers_name,
+        phone1, emergency_contact, address, pincode,
+        institution_name, blood_group, nationality, religion, parent_occupation
+    ]
+    if not all(mandatory_fields):
+        flash("All fields except Phone 2 and Aadhaar Number are required.", "error")
         return redirect(url_for("home"))
 
     if not supabase:
@@ -693,6 +858,31 @@ def book_details(book_id):
     )
 
 
+def get_all_reviews():
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("reviews").select("*, books(title), users(username, name)").order("created_at", desc=True).execute()
+        reviews = []
+        for r in res.data or []:
+            book_info = r.get("books") or {}
+            user_info = r.get("users") or {}
+            item = {
+                "id": r.get("id"),
+                "book_id": r.get("book_id"),
+                "book_title": book_info.get("title", "Unknown Book") if isinstance(book_info, dict) else "Unknown Book",
+                "user_name": r.get("user_name") or (user_info.get("name") if isinstance(user_info, dict) else None) or (user_info.get("username") if isinstance(user_info, dict) else None) or "Anonymous",
+                "rating": r.get("rating", 5),
+                "comment": r.get("comment", ""),
+                "created_at": r.get("created_at"),
+            }
+            reviews.append(item)
+        return reviews
+    except Exception as e:
+        print(f"Error getting all reviews: {e}")
+        return []
+
+
 @app.route("/admin")
 def admin_dashboard():
     if not session.get("is_admin"):
@@ -716,6 +906,7 @@ def admin_dashboard():
         categories=get_categories(),
         stats=stats,
         recent_activity=get_recent_activity(),
+        all_reviews=get_all_reviews(),
     )
 
 
@@ -812,6 +1003,171 @@ def my_downloads():
     )
 
 
+@app.route("/preview/<int:book_id>")
+def preview_book(book_id):
+    if not session.get("user_id"):
+        flash("Please log in to preview books.", "error")
+        return redirect(url_for("home"))
+    if not supabase:
+        return "Database error", 500
+    try:
+        book = supabase.table("books").select("*").eq("id", book_id).execute()
+        if not book.data:
+            return "Book not found", 404
+        book_data = book.data[0]
+        local_path = os.path.join(UPLOAD_FOLDER, book_data["filename"])
+        mime = mimetypes.guess_type(book_data.get("original_name") or book_data["filename"])[0] or "application/pdf"
+        if os.path.isfile(local_path):
+            return send_from_directory(UPLOAD_FOLDER, book_data["filename"], mimetype=mime)
+        file_data = supabase.storage.from_(STORAGE_BUCKET).download(book_data["filename"])
+        return send_file(io.BytesIO(file_data), mimetype=mime)
+    except Exception as e:
+        return f"Preview error: {e}", 500
+
+
+@app.route("/submit-review/<int:book_id>", methods=["POST"])
+def submit_review(book_id):
+    if not session.get("user_id"):
+        flash("Please log in to submit a review.", "error")
+        return redirect(url_for("home"))
+    rating = int(request.form.get("rating", 5))
+    comment = request.form.get("comment", "").strip()
+    user = get_user_by_id(session["user_id"])
+    if not user:
+        flash("User error.", "error")
+        return redirect(url_for("book_details", book_id=book_id))
+    try:
+        supabase.table("reviews").insert({
+            "book_id": book_id,
+            "user_id": session["user_id"],
+            "user_name": user.get("name") or user.get("username") or "Anonymous",
+            "rating": rating,
+            "comment": comment
+        }).execute()
+        flash("Review submitted successfully!", "success")
+    except Exception as e:
+        flash(f"Error submitting review: {e}", "error")
+    return redirect(url_for("book_details", book_id=book_id))
+
+
+@app.route("/admin/edit-book/<int:book_id>", methods=["POST"])
+def edit_book(book_id):
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    title = request.form.get("title", "").strip()
+    author = request.form.get("author", "").strip()
+    category_id = request.form.get("category_id")
+    description = request.form.get("description", "").strip()
+    try:
+        payload = {"title": title, "author": author, "description": description}
+        if category_id:
+            payload["category_id"] = int(category_id)
+        supabase.table("books").update(payload).eq("id", book_id).execute()
+        flash("Book updated successfully.", "success")
+    except Exception as e:
+        flash(f"Error updating book: {e}", "error")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/add-category", methods=["POST"])
+def add_category():
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    name = request.form.get("name", "").strip()
+    if name:
+        try:
+            supabase.table("categories").insert({"name": name}).execute()
+            flash(f"Category '{name}' added successfully.", "success")
+        except Exception as e:
+            flash(f"Error adding category: {e}", "error")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/delete-category/<int:category_id>", methods=["POST"])
+def delete_category(category_id):
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    try:
+        supabase.table("categories").delete().eq("id", category_id).execute()
+        flash("Category deleted successfully.", "success")
+    except Exception as e:
+        flash(f"Error deleting category: {e}", "error")
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/export/students")
+def export_students():
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    import csv
+    entries = get_student_entries()
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["ID", "Name", "Student No", "Branch", "Year", "Phone1", "Phone2", "Emergency", "Address", "Pincode", "Created At"])
+    for e in entries:
+        cw.writerow([e.get("id"), e.get("name"), e.get("student_no"), e.get("branch"), e.get("year"), e.get("phone1"), e.get("phone2"), e.get("emergency_contact"), e.get("address"), e.get("pincode"), e.get("created_at")])
+    return send_file(io.BytesIO(si.getvalue().encode("utf-8")), mimetype="text/csv", as_attachment=True, download_name="student_visitors.csv")
+
+
+@app.route("/admin/export/downloads")
+def export_downloads():
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    import csv
+    history = get_download_history()
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["ID", "Book Title", "User", "Downloaded At"])
+    for d in history:
+        cw.writerow([d.get("id"), d.get("book_title"), d.get("user_name"), d.get("downloaded_at")])
+    return send_file(io.BytesIO(si.getvalue().encode("utf-8")), mimetype="text/csv", as_attachment=True, download_name="download_history.csv")
+
+
+@app.route("/admin/export/users")
+def export_users():
+    if not session.get("is_admin"):
+        flash("Unauthorized", "error")
+        return redirect(url_for("home"))
+    import csv
+    users = get_users()
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(["ID", "Username", "Name", "Email", "Phone", "Role", "Is Admin", "Created At"])
+    for u in users:
+        cw.writerow([
+            u.get("id"),
+            u.get("username"),
+            u.get("name"),
+            u.get("email"),
+            u.get("phone"),
+            u.get("role"),
+            u.get("is_admin"),
+            u.get("created_at"),
+        ])
+    return send_file(
+        io.BytesIO(si.getvalue().encode("utf-8")),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="user_details_export.csv",
+    )
+
+
+@app.route("/activity")
+def recent_activity_page():
+    if not session.get("user_id") and not session.get("logged_in") and not session.get("is_admin"):
+        flash("Please log in to view activity.", "error")
+        return redirect(url_for("home"))
+    return render_template(
+        "activity.html",
+        recent_activity=get_recent_activity(limit=50),
+    )
+
+
 @app.route("/uploads/<path:filename>")
 def served_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
@@ -819,4 +1175,4 @@ def served_file(filename):
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host="0.0.0.0", port=2111)
+    app.run(debug=True, host="0.0.0.0", port=2111)

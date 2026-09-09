@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Settings</title>
+    <title>Settings | V U Rohith Books</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -13,15 +13,24 @@
   <body>
     <div class="page-shell admin-shell">
       <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark">V.U</div>
+        <div class="brand-block" onclick="window.location.href='{{ url_for('home') }}'" style="cursor: pointer;">
+          <div class="brand-mark">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+              <path d="M6.5 6H20"></path>
+              <path d="M6.5 10H20"></path>
+            </svg>
+          </div>
           <div>
-            <p class="eyebrow">Account</p>
+            <p class="eyebrow">Account Preferences</p>
             <h1>Settings</h1>
           </div>
         </div>
         <div class="topbar-actions">
-          <a href="{{ url_for('home') }}" class="ghost-button small">Back to Library</a>
+          <button type="button" class="ghost-button small theme-toggle-btn" id="theme-toggle" aria-label="Toggle theme">🌙 Dark</button>
+          <a href="{{ url_for('home') }}" class="ghost-button small">
+            {% if session.get('is_admin') %}Back to Dashboard{% else %}Back to Library{% endif %}
+          </a>
           <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
         </div>
       </header>
@@ -36,15 +45,47 @@
         {% endif %}
       {% endwith %}
 
-      <main>
+      <main style="max-width: 980px; margin: 0 auto; width: 100%;">
         <div class="admin-tabs settings-tabs" aria-label="Settings sections">
-          <button type="button" class="settings-tab admin-tab active" data-target="password-tab">Change Password</button>
-          <button type="button" class="settings-tab admin-tab" data-target="delete-tab">Delete Account</button>
+          <button type="button" class="settings-tab admin-tab active" data-target="profile-tab">👤 Profile</button>
+          <button type="button" class="settings-tab admin-tab" data-target="password-tab">🔒 Security</button>
+          <button type="button" class="settings-tab admin-tab" data-target="preferences-tab">🎨 Preferences</button>
+          {% if session.get('is_admin') %}
+            <button type="button" class="settings-tab admin-tab" data-target="admin-settings-tab">🛡️ System Settings</button>
+          {% endif %}
+          <button type="button" class="settings-tab admin-tab" data-target="delete-tab">⚠️ Account</button>
         </div>
 
-        <section id="password-tab" class="settings-panel panel active">
+        <!-- Profile Settings Panel -->
+        <section id="profile-tab" class="settings-panel panel active">
           <div class="panel-inner">
-            <h2>Change Password</h2>
+            <h2>Personal Profile</h2>
+            <form method="post" action="{{ url_for('update_profile') }}" class="stacked-form">
+              <label>
+                <span>Username</span>
+                <input type="text" value="{{ current_user['username'] if current_user else '' }}" disabled style="opacity: 0.7; cursor: not-allowed;" />
+              </label>
+              <label>
+                <span>Full Name</span>
+                <input type="text" name="name" value="{{ current_user['name'] if current_user else '' }}" placeholder="Enter full name" required />
+              </label>
+              <label>
+                <span>Email Address</span>
+                <input type="email" name="email" value="{{ current_user['email'] if current_user else '' }}" placeholder="Enter email address" required />
+              </label>
+              <label>
+                <span>Phone Number</span>
+                <input type="tel" name="phone" value="{{ current_user['phone'] if (current_user and current_user['phone']) else '' }}" placeholder="10-digit mobile number" />
+              </label>
+              <button type="submit" class="primary-button">Save Profile Changes</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Security & Password Panel -->
+        <section id="password-tab" class="settings-panel panel">
+          <div class="panel-inner">
+            <h2>Security & Password</h2>
             <form method="post" action="{{ url_for('change_password') }}" class="stacked-form">
               <label>
                 <span>Current Password</span>
@@ -52,7 +93,7 @@
               </label>
               <label>
                 <span>New Password</span>
-                <input type="password" name="new_password" placeholder="Enter new password" required />
+                <input type="password" name="new_password" placeholder="Enter new password (min. 6 characters)" required />
               </label>
               <label>
                 <span>Confirm New Password</span>
@@ -63,6 +104,61 @@
           </div>
         </section>
 
+        <!-- Interface Preferences Panel -->
+        <section id="preferences-tab" class="settings-panel panel">
+          <div class="panel-inner">
+            <h2>Interface Preferences</h2>
+            <div class="stacked-form">
+              <label>
+                <span>Theme Mode</span>
+                <div style="display: flex; gap: 12px; margin-top: 6px;">
+                  <button type="button" class="secondary-button" onclick="document.body.classList.remove('light-theme'); localStorage.setItem('theme', 'dark'); alert('Dark mode preference saved!');">🌙 Dark Mode</button>
+                  <button type="button" class="secondary-button" onclick="document.body.classList.add('light-theme'); localStorage.setItem('theme', 'light'); alert('Light mode preference saved!');">☀️ Light Mode</button>
+                </div>
+              </label>
+              <label style="margin-top: 14px;">
+                <span>Default View Layout</span>
+                <select style="max-width: 280px; padding: 10px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--stroke); color: var(--text);">
+                  <option value="horizontal">Horizontal List View</option>
+                  <option value="grid">Grid View</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        {% if session.get('is_admin') %}
+          <!-- Admin System Settings Panel -->
+          <section id="admin-settings-tab" class="settings-panel panel">
+            <div class="panel-inner">
+              <h2>🛡️ System Administration & Controls</h2>
+              <div class="stacked-form">
+                <div class="details-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                  <div style="padding: 16px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2);">
+                    <span style="font-size: 0.8rem; color: var(--muted);">Library Name</span>
+                    <h3 style="margin-top: 4px; font-size: 1.1rem;">V U Rohith Books</h3>
+                  </div>
+                  <div style="padding: 16px; border-radius: 12px; background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.2);">
+                    <span style="font-size: 0.8rem; color: var(--muted);">Database Health</span>
+                    <h3 style="margin-top: 4px; font-size: 1.1rem; color: #4ade80;">Active (Supabase)</h3>
+                  </div>
+                  <div style="padding: 16px; border-radius: 12px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2);">
+                    <span style="font-size: 0.8rem; color: var(--muted);">Admin Passcode</span>
+                    <h3 style="margin-top: 4px; font-size: 1.1rem; color: #38bdf8;">admin@1406</h3>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <a href="{{ url_for('export_students') }}" class="secondary-button small">📥 Export Visitor Cards CSV</a>
+                  <a href="{{ url_for('export_downloads') }}" class="secondary-button small">📥 Export Downloads CSV</a>
+                  <a href="{{ url_for('export_users') }}" class="secondary-button small">📥 Export Users CSV</a>
+                </div>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        <!-- Delete Account Panel -->
         <section id="delete-tab" class="settings-panel panel">
           <div class="panel-inner">
             <h2>Delete Account</h2>
@@ -72,11 +168,12 @@
                 <span>Confirm your password</span>
                 <input type="password" name="delete_password" placeholder="Enter your password" required />
               </label>
-              <label>
-                <span>Confirmation</span>
-                <input type="checkbox" name="confirm_delete" value="on" required />
-                <small>I understand this will permanently delete my account.</small>
-              </label>
+              <div class="checkbox-container" style="display: flex; align-items: center; gap: 10px; margin: 16px 0; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px 16px; border-radius: 12px;">
+                <input type="checkbox" id="confirm_delete" name="confirm_delete" value="on" style="width: 20px; height: 20px; accent-color: #ef4444; cursor: pointer;" required />
+                <label for="confirm_delete" style="font-size: 0.92rem; font-weight: 500; color: var(--text); cursor: pointer; user-select: none; margin: 0;">
+                  I understand this will permanently delete my account.
+                </label>
+              </div>
               <button type="submit" class="primary-button danger">Delete My Account</button>
             </form>
           </div>

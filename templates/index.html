@@ -10,40 +10,51 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
     <script defer src="{{ url_for('static', filename='script.js') }}"></script>
   </head>
-  <body class="{% if logged_in %}logged-in{% endif %} {% if owner_logged %}owner-logged{% endif %}" data-default-section="login">
+  <body class="{% if logged_in %}logged-in{% endif %} {% if owner_logged %}owner-logged{% endif %}" data-default-section="{{ default_section }}">
     <div class="page-shell">
       <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark">V.U</div>
-          <div>
-            <p class="eyebrow">Digital library</p>
-            <h1>Rohith Books</h1>
+        <div class="brand-group" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div class="brand-block" onclick="showSection('{% if logged_in %}books{% else %}landing{% endif %}')" style="cursor: pointer;">
+            <div class="brand-mark">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+                <path d="M6.5 6H20"></path>
+                <path d="M6.5 10H20"></path>
+              </svg>
+            </div>
+            <div>
+              <p class="eyebrow">Digital library</p>
+              <h1>V U Rohith Books</h1>
+            </div>
           </div>
+          {% if logged_in %}
+            <span class="user-pill">{{ current_user['username'] }} ({{ current_user['role'] }})</span>
+          {% endif %}
         </div>
 
-        {% if logged_in %}
-          <div class="topbar-actions">
-            <span class="user-pill">{{ current_user['username'] }} ({{ current_user['role'] }})</span>
+        <div class="topbar-actions">
+          <button type="button" class="ghost-button small theme-toggle-btn" id="theme-toggle" aria-label="Toggle theme">🌙 Dark</button>
+          {% if not logged_in %}
+            <button type="button" class="ghost-button small nav-link active" data-section="landing" onclick="showSection('landing')">Home</button>
+            <button type="button" class="primary-button small nav-link" data-section="auth" onclick="showSection('auth')">Login / Signup</button>
+          {% else %}
+            <a href="{{ url_for('my_downloads') }}" class="ghost-button small">📥 Downloads</a>
+            <a href="{{ url_for('settings_page') }}" class="ghost-button small icon-only-btn" title="Settings">⚙️</a>
             <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
-          </div>
-        {% endif %}
+          {% endif %}
+        </div>
       </header>
 
-      <nav class="main-nav" aria-label="Main navigation">
-        {% if not logged_in %}
-          <button type="button" class="nav-link active" data-section="login">Login</button>
-          <button type="button" class="nav-link" data-section="signup">Sign Up</button>
-        {% else %}
+      {% if logged_in %}
+        <nav class="main-nav" aria-label="Main navigation">
           <button type="button" class="nav-link active" data-section="books">Book Listings</button>
-          <button type="button" class="nav-link" data-section="downloads">Download</button>
-          <button type="button" class="nav-link" data-section="entry">Entry Form</button>
-          <a href="{{ url_for('my_downloads') }}" class="nav-link nav-link-link">My Download History</a>
-          <a href="{{ url_for('settings_page') }}" class="nav-link nav-link-link">Settings</a>
+          <button type="button" class="nav-link" data-section="favorites">Favorites ❤️</button>
+          <button type="button" class="nav-link" data-section="entry">Visitor Entry Pass 🪪</button>
           {% if owner_logged %}
             <button type="button" class="nav-link" data-section="upload">Upload</button>
           {% endif %}
-        {% endif %}
-      </nav>
+        </nav>
+      {% endif %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -57,56 +68,114 @@
 
       <main>
         {% if not logged_in %}
-          <section id="login" class="panel active">
-            <div class="panel-inner">
-              <h2>Login</h2>
-              <form method="post" action="{{ url_for('login') }}" class="stacked-form">
-                <label>
-                  <span>Username</span>
-                  <input type="text" name="username" placeholder="Enter username" required />
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input type="password" name="password" placeholder="Enter password" required />
-                </label>
-                <button type="submit" class="primary-button">Login</button>
-              </form>
+          <!-- Front / Landing Page -->
+          <section id="landing" class="panel">
+            <div class="panel-inner landing-hero">
+              <div class="hero-badge">📚 Digital Knowledge Hub</div>
+              <h1>Welcome to V.U Rohith Books</h1>
+              <p class="hero-subtitle">
+                Explore thousands of academic textbooks, storybooks, and reference materials. 
+                Sign in to read online, download books, access your digital visitor ID pass, and save your favorite titles.
+              </p>
+              <div class="hero-actions">
+                <button type="button" class="primary-button" onclick="showSection('login')">🔑 Login to Library</button>
+                <button type="button" class="secondary-button" onclick="showSection('signup')">📝 Create Account</button>
+              </div>
+
+              <!-- Feature Highlights -->
+              <div class="hero-features-grid">
+                <div class="feature-card">
+                  <div class="feature-icon">📚</div>
+                  <h3>Digital Library Catalog</h3>
+                  <p>Browse categorized textbooks, storybooks, mathematics, and lesson guides in high quality.</p>
+                </div>
+                <div class="feature-card">
+                  <div class="feature-icon">🪪</div>
+                  <h3>Student Visitor Pass</h3>
+                  <p>Generate and print your authorized digital student visitor ID pass with barcode validation.</p>
+                </div>
+                <div class="feature-card">
+                  <div class="feature-icon">⭐</div>
+                  <h3>Ratings & Reviews</h3>
+                  <p>See peer reviews, star ratings, and community recommendations before reading.</p>
+                </div>
+              </div>
             </div>
           </section>
 
-          <section id="signup" class="panel">
+          <!-- Combined Authentication Section -->
+          <section id="auth" class="panel">
             <div class="panel-inner">
-              <h2>Register</h2>
-              <form method="post" action="{{ url_for('register') }}" class="stacked-form">
-                <label>
-                  <span>Name</span>
-                  <input type="text" name="name" required />
-                </label>
-                <label>
-                  <span>Email</span>
-                  <input type="email" name="email" required />
-                </label>
-                <label>
-                  <span>Username</span>
-                  <input type="text" name="username" required />
-                </label>
-                <label>
-                  <span>Phone</span>
-                  <input type="tel" name="phone" />
-                </label>
-                <label>
-                  <span>Role</span>
-                  <select name="role">
-                    <option value="student">Student</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input type="password" name="password" required />
-                </label>
-                <button type="submit" class="primary-button">Register</button>
-              </form>
+              <div class="auth-sub-tabs" role="tablist">
+                <button type="button" class="auth-tab-btn active" id="auth-tab-login" onclick="switchAuthSubTab('login')">Login</button>
+                <button type="button" class="auth-tab-btn" id="auth-tab-signup" onclick="switchAuthSubTab('signup')">Sign Up</button>
+              </div>
+
+              <!-- Login Form Sub-panel -->
+              <div id="auth-sub-login" class="auth-sub-panel active">
+                <div class="auth-box-header">
+                  <h2>Login</h2>
+                  <p class="auth-box-subtitle">Enter your credentials to access the digital library</p>
+                </div>
+                <form method="post" action="{{ url_for('login') }}" class="stacked-form">
+                  <label>
+                    <span>Username</span>
+                    <input type="text" name="username" placeholder="Enter username" required />
+                  </label>
+                  <label>
+                    <span>Password</span>
+                    <input type="password" name="password" placeholder="Enter password" required />
+                  </label>
+                  <button type="submit" class="primary-button">Login</button>
+                </form>
+                <div class="auth-extra-links" style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+                  <p class="auth-switch-text" style="margin: 0;">
+                    Don't have an account? <button type="button" class="text-link-btn" onclick="switchAuthSubTab('signup')">Sign Up here</button>
+                  </p>
+                  <button type="button" class="text-link-btn" onclick="openForgotPasswordModal()">Forgot Password?</button>
+                </div>
+              </div>
+
+              <!-- Sign Up Form Sub-panel -->
+              <div id="auth-sub-signup" class="auth-sub-panel" style="display: none;">
+                <div class="auth-box-header">
+                  <h2>Create Account</h2>
+                  <p class="auth-box-subtitle">Register to get full access to books, downloads, and visitor passes</p>
+                </div>
+                <form method="post" action="{{ url_for('register') }}" class="stacked-form">
+                  <label>
+                    <span>Full Name</span>
+                    <input type="text" name="name" placeholder="Enter full name" required />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input type="email" name="email" placeholder="Enter email address" required />
+                  </label>
+                  <label>
+                    <span>Username</span>
+                    <input type="text" name="username" placeholder="Choose a username" required />
+                  </label>
+                  <label>
+                    <span>Phone Number</span>
+                    <input type="tel" name="phone" placeholder="Enter contact number" />
+                  </label>
+                  <label>
+                    <span>Role</span>
+                    <select name="role">
+                      <option value="student">Student</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Password</span>
+                    <input type="password" name="password" placeholder="Create password" required />
+                  </label>
+                  <button type="submit" class="primary-button">Register Account</button>
+                </form>
+                <p class="auth-switch-text">
+                  Already have an account? <button type="button" class="text-link-btn" onclick="switchAuthSubTab('login')">Login here</button>
+                </p>
+              </div>
             </div>
           </section>
         {% else %}
@@ -114,36 +183,70 @@
             <div class="panel-inner">
               <div class="section-header">
                 <h2>Book Listings</h2>
-                <span class="section-badge">{{ books|length }} titles</span>
+                <span class="section-badge" id="book-count-badge">{{ books|length }} titles</span>
               </div>
 
-              <form method="get" action="{{ url_for('home') }}" class="filter-form">
+              <div class="category-pills" role="tablist">
+                <button type="button" class="cat-pill active" data-category="ALL">All Books</button>
+                {% for category in categories %}
+                  <button type="button" class="cat-pill" data-category="{{ category['name'] }}">{{ category['name'] }}</button>
+                {% endfor %}
+              </div>
+
+              <form method="get" action="{{ url_for('home') }}" class="filter-form" onsubmit="return false;">
                 <div class="filter-row">
-                  <input type="search" name="q" value="{{ search_term }}" placeholder="Search by title or author" />
-                  <select name="category_id">
-                    <option value="">All categories</option>
-                    {% for category in categories %}
-                      <option value="{{ category['id'] }}" {% if selected_category_id == category['id'] %}selected{% endif %}>{{ category['name'] }}</option>
-                    {% endfor %}
+                  <input type="search" id="live-search-input" name="q" value="{{ search_term }}" placeholder="⚡ Search by title, author, or category..." />
+                  <select id="sort-books-select" title="Sort books">
+                    <option value="recent">Sort: Most Recent</option>
+                    <option value="rating">Sort: Highest Rated</option>
+                    <option value="downloads">Sort: Most Downloaded</option>
+                    <option value="title">Sort: Title (A-Z)</option>
+                    <option value="author">Sort: Author (A-Z)</option>
                   </select>
-                  <button type="submit" class="primary-button small">Search</button>
-                  {% if search_term or selected_category_id %}
-                    <a href="{{ url_for('home') }}" class="secondary-button small">Clear</a>
-                  {% endif %}
                 </div>
               </form>
 
-              <div class="books-grid">
+              <div class="books-grid" id="books-grid-container">
                 {% for book in books %}
-                  <article class="book-card">
-                    <p class="tag">{{ book['category_name'] or 'General' }}</p>
-                    <h3>{{ book['title'] }}</h3>
-                    <p class="meta"><strong>Author:</strong> {{ book['author'] or 'Unknown Author' }}</p>
-                    <p class="meta"><strong>Category:</strong> {{ book['category_name'] or 'General' }}</p>
-                    <p class="book-description">{{ (book['description'] or 'No description available.')[:160] }}{% if (book['description'] or '')|length > 160 %}...{% endif %}</p>
-                    <p class="meta">Uploaded: {{ book['uploaded_at'][:10] if book['uploaded_at'] else '—' }}</p>
-                    <div class="book-actions">
-                      <a href="{{ url_for('book_details', book_id=book['id']) }}" class="secondary-button small">View Details</a>
+                  <article class="book-card horizontal" 
+                           data-book-id="{{ book['id'] }}" 
+                           data-category="{{ book['category_name'] or 'Others' }}"
+                           data-title="{{ book['title'] }}"
+                           data-author="{{ book['author'] or '' }}"
+                           data-rating="{{ book['avg_rating'] or 0 }}"
+                           data-downloads="{{ book['download_count'] or 0 }}"
+                           data-uploaded="{{ book['uploaded_at'] or '' }}">
+                    <div class="book-card-left">
+                      <span class="book-card-icon">📚</span>
+                    </div>
+
+                    <div class="book-card-center">
+                      <div class="card-badges">
+                        <span class="tag">{{ book['category_name'] or 'General' }}</span>
+                        {% if book['avg_rating'] and book['avg_rating'] > 0 %}
+                          <span class="rating-badge">⭐ {{ book['avg_rating'] }}</span>
+                        {% endif %}
+                        <span class="dl-badge">📥 {{ book['download_count'] or 0 }}</span>
+                      </div>
+                      <h3>{{ book['title'] }}</h3>
+                      <p class="meta"><strong>Author:</strong> {{ book['author'] or 'Unknown Author' }}</p>
+                      <p class="book-description">{{ (book['description'] or 'No description available.')[:180] }}{% if (book['description'] or '')|length > 180 %}...{% endif %}</p>
+                      
+                      <div class="status-tracker-row">
+                        <select class="status-select small" data-book-id="{{ book['id'] }}">
+                          <option value="">+ Status</option>
+                          <option value="reading">📖 Reading</option>
+                          <option value="completed">✅ Completed</option>
+                          <option value="want">📌 Want to Read</option>
+                        </select>
+                        <span class="status-pill-badge" id="status-pill-{{ book['id'] }}" style="display:none;"></span>
+                      </div>
+                    </div>
+
+                    <div class="book-card-right">
+                      <button type="button" class="bookmark-btn" data-book-id="{{ book['id'] }}" aria-label="Bookmark book">♡</button>
+                      <button type="button" class="ghost-button small preview-trigger" data-book-id="{{ book['id'] }}" data-book-title="{{ book['title'] }}">👁️ Preview</button>
+                      <a href="{{ url_for('book_details', book_id=book['id']) }}" class="secondary-button small">Details</a>
                       <a href="{{ url_for('download_book', book_id=book['id']) }}" class="primary-button small" download>Download</a>
                     </div>
                   </article>
@@ -174,111 +277,6 @@
               {% endif %}
             </div>
           </section>
-
-          {% if not owner_logged %}
-            <section id="entry" class="panel">
-              <div class="panel-inner">
-                <h2>Student Entry Form</h2>
-                <form method="post" action="{{ url_for('submit_details') }}" class="stacked-form">
-                  <div class="details-section">
-                    <h3>Personal Details</h3>
-                    <div class="details-grid">
-                      <label>
-                        <span>Name</span>
-                        <input type="text" name="name" value="{{ current_user['name'] if current_user else '' }}" required />
-                      </label>
-                      <label>
-                        <span>Email</span>
-                        <input type="email" name="email" value="{{ current_user['email'] if current_user else '' }}" />
-                      </label>
-                      <label>
-                        <span>Date of Birth</span>
-                        <input type="date" name="date_of_birth" />
-                      </label>
-                      <label>
-                        <span>Blood Group</span>
-                        <input type="text" name="blood_group" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Nationality</span>
-                        <input type="text" name="nationality" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Aadhaar Number</span>
-                        <input type="text" name="aadhaar_number" placeholder="Optional" />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="details-section">
-                    <h3>Academic Details</h3>
-                    <div class="details-grid">
-                      <label>
-                        <span>Institution / School Name</span>
-                        <input type="text" name="institution_name" placeholder="Optional" />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="details-section">
-                    <h3>Guardian Details</h3>
-                    <div class="details-grid">
-                      <label>
-                        <span>Father's Name</span>
-                        <input type="text" name="fathers_name" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Mother's Name</span>
-                        <input type="text" name="mothers_name" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Religion</span>
-                        <input type="text" name="religion" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Parent Occupation</span>
-                        <input type="text" name="parent_occupation" placeholder="Optional" />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="details-section">
-                    <h3>Contact Details</h3>
-                    <div class="details-grid">
-                      <label>
-                        <span>Phone 1</span>
-                        <input type="tel" name="phone1" pattern="[0-9]{10}" required />
-                      </label>
-                      <label>
-                        <span>Phone 2</span>
-                        <input type="tel" name="phone2" pattern="[0-9]{10}" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Emergency Contact</span>
-                        <input type="tel" name="emergency_contact" pattern="[0-9]{10}" placeholder="Optional" />
-                      </label>
-                      <label>
-                        <span>Address</span>
-                        <textarea name="address" rows="3" required></textarea>
-                      </label>
-                      <label>
-                        <span>Pincode</span>
-                        <input type="text" name="pincode" placeholder="Optional" />
-                      </label>
-                    </div>
-                  </div>
-
-                  <button type="submit" class="primary-button">Save My Details</button>
-                </form>
-                {% if student_entry %}
-                  <div class="saved-details">
-                    <h3>Saved Visitor ID</h3>
-                    <p>{{ student_entry['student_no'] }}</p>
-                  </div>
-                {% endif %}
-              </div>
-            </section>
-          {% endif %}
 
           {% if owner_logged %}
             <section id="upload" class="panel">
@@ -315,7 +313,197 @@
             </section>
           {% endif %}
         {% endif %}
+
+        <section id="entry" class="panel">
+          <div class="panel-inner">
+            <div class="section-header" style="margin-bottom: 20px;">
+              <h2>Student Entry Form</h2>
+              <button type="button" class="primary-button small" onclick="openIdCardModal('{{ current_user['name'] if (current_user and current_user['name']) else 'Student Visitor' }}', '{{ student_entry['student_no'] if student_entry else '784912' }}', '{{ (student_entry['institution_name'] if student_entry else '') or 'V.U Rohith Digital Library' }}', '{{ (student_entry['phone1'] if student_entry else '') or '9876543210' }}')">🪪 Preview Digital Visitor Pass / ID Card</button>
+            </div>
+            <form method="post" action="{{ url_for('submit_details') }}" class="stacked-form">
+              <div class="details-section">
+                <h3>Personal Details</h3>
+                <div class="details-grid">
+                  <label>
+                    <span>Name</span>
+                    <input type="text" name="name" value="{{ current_user['name'] if current_user else '' }}" required />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input type="email" name="email" value="{{ current_user['email'] if current_user else '' }}" required />
+                  </label>
+                  <label>
+                    <span>Date of Birth</span>
+                    <input type="date" name="date_of_birth" required />
+                  </label>
+                  <label>
+                    <span>Blood Group</span>
+                    <input type="text" name="blood_group" placeholder="e.g. O+, A+" required />
+                  </label>
+                  <label>
+                    <span>Institution</span>
+                    <input type="text" name="institution_name" placeholder="School / College / University" required />
+                  </label>
+                  <label>
+                    <span>Father's Name</span>
+                    <input type="text" name="fathers_name" placeholder="Father's Full Name" required />
+                  </label>
+                  <label>
+                    <span>Mother's Name</span>
+                    <input type="text" name="mothers_name" placeholder="Mother's Full Name" required />
+                  </label>
+                  <label>
+                    <span>Nationality</span>
+                    <input type="text" name="nationality" placeholder="Indian" required />
+                  </label>
+                  <label>
+                    <span>Aadhaar Number</span>
+                    <input type="text" name="aadhaar_number" placeholder="Optional" />
+                  </label>
+                  <label>
+                    <span>Religion</span>
+                    <input type="text" name="religion" placeholder="Religion" required />
+                  </label>
+                  <label>
+                    <span>Parent Occupation</span>
+                    <input type="text" name="parent_occupation" placeholder="Parent Occupation" required />
+                  </label>
+                </div>
+              </div>
+
+              <div class="details-section">
+                <h3>Contact Details</h3>
+                <div class="details-grid">
+                  <label>
+                    <span>Phone 1</span>
+                    <input type="tel" name="phone1" pattern="[0-9]{10}" required />
+                  </label>
+                  <label>
+                    <span>Phone 2</span>
+                    <input type="tel" name="phone2" pattern="[0-9]{10}" placeholder="Optional" />
+                  </label>
+                  <label>
+                    <span>Emergency Contact</span>
+                    <input type="tel" name="emergency_contact" pattern="[0-9]{10}" placeholder="10-digit mobile" required />
+                  </label>
+                  <label>
+                    <span>Pincode</span>
+                    <input type="text" name="pincode" placeholder="6-digit Pincode" required />
+                  </label>
+                </div>
+              </div>
+
+              <div class="details-section" style="margin-top: 18px;">
+                <h3>Residential Address</h3>
+                <label style="display: block; width: 100%;">
+                  <span style="font-weight: 600; margin-bottom: 8px; display: block;">Full Address</span>
+                  <textarea name="address" rows="5" placeholder="Enter complete home / residential address with door no, street, locality..." style="width: 100%; min-height: 120px; padding: 14px 16px; border-radius: 12px; resize: vertical; line-height: 1.5; font-family: inherit;" required></textarea>
+                </label>
+              </div>
+
+              <button type="submit" class="primary-button">Save My Details</button>
+            </form>
+            {% if student_entry %}
+              <div class="saved-details" style="margin-top: 18px; padding: 18px; border-radius: 14px; background: rgba(148,163,184,0.06); border: 1px solid var(--stroke);">
+                <h3>Saved Visitor ID: <strong>{{ student_entry['student_no'] }}</strong></h3>
+                <button type="button" class="primary-button small" onclick="openIdCardModal('{{ student_entry['name'] }}', '{{ student_entry['student_no'] }}', '{{ student_entry['institution_name'] or 'Digital Library Member' }}', '{{ student_entry['phone1'] }}')">🪪 View Digital Visitor Pass / ID Card</button>
+              </div>
+            {% endif %}
+          </div>
+        </section>
+
+        <section id="favorites" class="panel">
+          <div class="panel-inner">
+            <div class="section-header">
+              <h2>My Favorite Books ❤️</h2>
+            </div>
+            <div class="books-grid" id="favorites-grid-container">
+              <p class="empty-state" id="no-favorites-msg">No bookmarked books yet. Click ♡ on any book to add it to your favorites!</p>
+            </div>
+          </div>
+        </section>
       </main>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-box preview-modal-box" id="preview-modal-box">
+        <div class="modal-header">
+          <h3 id="modal-title">Book Preview</h3>
+          <div class="modal-header-actions">
+            <button type="button" class="ghost-button small" id="preview-fullscreen-btn" title="Toggle Fullscreen">⛶ Fullscreen</button>
+            <a id="preview-newtab-btn" href="#" target="_blank" class="ghost-button small">↗ Open in Tab</a>
+            <button type="button" class="modal-close" id="close-preview-modal" aria-label="Close modal">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <iframe id="preview-frame" src="" title="Document Preview"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <!-- Digital Student Visitor Pass ID Card Modal -->
+    <div id="idcard-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="modal-box idcard-modal-box">
+        <div class="modal-header">
+          <h3>Digital Visitor Pass / Student ID Card</h3>
+          <button type="button" class="modal-close" onclick="closeIdCardModal()">&times;</button>
+        </div>
+        <div class="modal-body idcard-modal-body">
+          <div class="id-card-preview" id="id-card-printable">
+            <div class="id-card-header">
+              <div class="id-card-logo">V.U</div>
+              <div>
+                <h4>V.U ROHITH BOOKS</h4>
+                <p>DIGITAL LIBRARY VISITOR PASS</p>
+              </div>
+            </div>
+            <div class="id-card-body">
+              <div class="id-photo-placeholder">👤</div>
+              <div class="id-card-details">
+                <p class="id-name" id="card-student-name">Student Name</p>
+                <p class="id-no-badge">ID: <strong id="card-student-no">000000</strong></p>
+                <p><strong>Institution:</strong> <span id="card-institution">Library Member</span></p>
+                <p><strong>Contact:</strong> <span id="card-phone">—</span></p>
+                <p><strong>Status:</strong> <span class="tag-status">Verified Visitor</span></p>
+              </div>
+            </div>
+            <div class="id-card-footer">
+              <div class="barcode-graphic">||| | |||| | ||| |||| | |||</div>
+              <p>Authorized Digital Pass • V.U Rohith Digital Library</p>
+            </div>
+          </div>
+          <div class="idcard-actions">
+            <button type="button" class="primary-button" onclick="window.print()">🖨️ Print / Save Pass</button>
+            <button type="button" class="secondary-button" onclick="closeIdCardModal()">Close</button>
+          </div>
+        </div>
+      </div>
+    <!-- Forgot Password Modal -->
+    <div id="forgot-password-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="forgot-modal-title">
+      <div class="modal-box" style="max-width: 440px;">
+        <div class="modal-header">
+          <h3 id="forgot-modal-title">Reset Password</h3>
+          <button type="button" class="modal-close" onclick="closeForgotPasswordModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form method="post" action="{{ url_for('forgot_password') }}" class="stacked-form">
+            <label>
+              <span>Username or Registered Email</span>
+              <input type="text" name="account_id" placeholder="Enter username or registered email" required />
+            </label>
+            <label>
+              <span>New Password</span>
+              <input type="password" name="new_password" placeholder="Create new password (min. 6 chars)" required />
+            </label>
+            <label>
+              <span>Confirm New Password</span>
+              <input type="password" name="confirm_password" placeholder="Confirm new password" required />
+            </label>
+            <button type="submit" class="primary-button" style="width: 100%; margin-top: 8px;">Reset Password</button>
+          </form>
+        </div>
+      </div>
     </div>
   </body>
 </html>

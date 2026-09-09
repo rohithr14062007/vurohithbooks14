@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recent Activity | V U Rohith Books</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script defer src="{{ url_for('static', filename='script.js') }}"></script>
+  </head>
+  <body>
+    <div class="page-shell activity-shell">
+      <header class="topbar">
+        <div class="brand-block" onclick="window.location.href='{{ url_for('home') }}'" style="cursor: pointer;">
+          <div class="brand-mark">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+              <path d="M6.5 6H20"></path>
+              <path d="M6.5 10H20"></path>
+            </svg>
+          </div>
+          <div>
+            <p class="eyebrow">Digital library</p>
+            <h1>V U Rohith Books</h1>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button type="button" class="ghost-button small theme-toggle-btn" id="theme-toggle" aria-label="Toggle theme">🌙 Dark</button>
+          <a href="{{ url_for('home') }}" class="ghost-button small">
+            {% if session.get('is_admin') %}Back to Dashboard{% else %}Back to Library{% endif %}
+          </a>
+          {% if session.get('is_admin') %}
+            <a href="{{ url_for('export_downloads') }}" class="secondary-button small">📥 Export Downloads CSV</a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
+        </div>
+      </header>
+
+      <main class="activity-main-page">
+        <section class="panel active" style="max-width: 980px; margin: 0 auto;">
+          <div class="panel-inner">
+            <div class="section-header" style="margin-bottom: 28px;">
+              <div>
+                <span class="hero-badge">⚡ Real-time Library Feed</span>
+                <h2 style="margin-top: 8px;">Recent Activity</h2>
+              </div>
+              {% if session.get('is_admin') %}
+                <a href="{{ url_for('export_downloads') }}" class="secondary-button small">📥 Export Downloads CSV</a>
+              {% endif %}
+            </div>
+
+            {% if recent_activity %}
+              <div class="activity-page-grid">
+                {% for item in recent_activity %}
+                  <div class="activity-card-item">
+                    <div class="activity-kind-badge {{ item['kind'] }}">
+                      {{ item['kind']|title }}
+                    </div>
+                    <div class="activity-card-body">
+                      <h3>{{ item['label'] }}</h3>
+                      <p class="activity-time">🕒 {{ item['created_at'] or 'Just now' }}</p>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="empty-state">No recent activity recorded yet.</p>
+            {% endif %}
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

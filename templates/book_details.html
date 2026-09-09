@@ -14,7 +14,13 @@
     <div class="page-shell detail-shell">
       <header class="topbar">
         <div class="brand-block">
-          <div class="brand-mark">V.U</div>
+          <div class="brand-mark">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+              <path d="M6.5 6H20"></path>
+              <path d="M6.5 10H20"></path>
+            </svg>
+          </div>
           <div>
             <p class="eyebrow">Book information</p>
             <h1>{{ book['title'] }}</h1>
@@ -41,7 +47,12 @@
       <main class="detail-panel">
         <div class="detail-card">
           <div class="detail-meta-row">
-            <span class="tag">{{ book['category_name'] or 'General' }}</span>
+            <div class="card-badges">
+              <span class="tag">{{ book['category_name'] or 'General' }}</span>
+              {% if book['avg_rating'] and book['avg_rating'] > 0 %}
+                <span class="rating-badge">⭐ {{ book['avg_rating'] }} / 5.0 ({{ book['review_count'] }} {{ 'review' if book['review_count'] == 1 else 'reviews' }})</span>
+              {% endif %}
+            </div>
             <span class="section-badge">Uploaded {{ book['uploaded_at'][:10] if book['uploaded_at'] else '—' }}</span>
           </div>
 
@@ -72,11 +83,73 @@
           </div>
 
           <div class="detail-actions">
+            <button type="button" class="ghost-button preview-trigger" data-book-id="{{ book['id'] }}" data-book-title="{{ book['title'] }}">👁️ Preview Book</button>
             <a href="{{ url_for('download_book', book_id=book['id']) }}" class="primary-button" download>Download Book</a>
             <a href="{{ url_for('home') }}" class="secondary-button">Back to Library</a>
           </div>
         </div>
+
+        <!-- Rating & Reviews Section -->
+        <div class="detail-card reviews-card" style="margin-top: 24px;">
+          <h2>Student Reviews & Ratings</h2>
+          {% if logged_in %}
+            <form method="post" action="{{ url_for('submit_review', book_id=book['id']) }}" class="stacked-form" style="margin-bottom: 28px;">
+              <label>
+                <span>Your Rating</span>
+                <div class="star-rating-picker">
+                  <input type="radio" id="star5" name="rating" value="5" checked /><label for="star5">★</label>
+                  <input type="radio" id="star4" name="rating" value="4" /><label for="star4">★</label>
+                  <input type="radio" id="star3" name="rating" value="3" /><label for="star3">★</label>
+                  <input type="radio" id="star2" name="rating" value="2" /><label for="star2">★</label>
+                  <input type="radio" id="star1" name="rating" value="1" /><label for="star1">★</label>
+                </div>
+              </label>
+              <label>
+                <span>Your Review</span>
+                <textarea name="comment" rows="3" placeholder="Share your thoughts about this book..." required></textarea>
+              </label>
+              <button type="submit" class="primary-button small">Submit Review</button>
+            </form>
+          {% else %}
+            <p class="empty-state">Please <a href="{{ url_for('home') }}">log in</a> to submit a review.</p>
+          {% endif %}
+
+          <div class="reviews-list">
+            {% for rev in reviews %}
+              <div class="review-item">
+                <div class="review-header">
+                  <strong>{{ rev['user_name'] or 'Student' }}</strong>
+                  <span class="review-stars">
+                    {% for i in range(1, 6) %}
+                      <span class="star {% if i <= rev['rating'] %}filled{% endif %}">★</span>
+                    {% endfor %}
+                  </span>
+                </div>
+                <p class="review-comment">{{ rev['comment'] }}</p>
+                <small class="review-date">{{ rev['created_at'][:10] if rev['created_at'] else '' }}</small>
+              </div>
+            {% else %}
+              <p class="empty-state">No reviews submitted yet. Be the first to review this book!</p>
+            {% endfor %}
+          </div>
+        </div>
       </main>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-box preview-modal-box">
+        <div class="modal-header">
+          <h3 id="modal-title">Book Preview</h3>
+          <div class="modal-header-actions">
+            <a id="preview-newtab-btn" href="#" target="_blank" class="ghost-button small">↗ Open in Tab</a>
+            <button type="button" class="modal-close" id="close-preview-modal" aria-label="Close modal">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <iframe id="preview-frame" src="" title="Document Preview"></iframe>
+        </div>
+      </div>
     </div>
   </body>
 </html>

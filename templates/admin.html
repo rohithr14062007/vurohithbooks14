@@ -21,6 +21,9 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button type="button" class="ghost-button small theme-toggle-btn" id="theme-toggle" aria-label="Toggle theme">🌙 Dark</button>
+          <a href="{{ url_for('settings_page') }}" class="ghost-button small icon-only-btn" title="Settings">⚙️</a>
+          <a href="{{ url_for('recent_activity_page') }}" class="ghost-button small">⚡ Recent Activity</a>
           <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
         </div>
       </header>
@@ -52,9 +55,10 @@
         <nav class="admin-tabs" aria-label="Admin sections">
           <button type="button" class="admin-tab active" data-target="inventory-tab">Book Inventory</button>
           <button type="button" class="admin-tab" data-target="upload-tab">Upload</button>
+          <button type="button" class="admin-tab" data-target="categories-tab">Categories</button>
           <button type="button" class="admin-tab" data-target="students-tab">Student Details</button>
           <button type="button" class="admin-tab" data-target="users-tab">Users</button>
-          <button type="button" class="admin-tab" data-target="activity-tab">Recent Activity</button>
+          <button type="button" class="admin-tab" data-target="reviews-tab">Reviews & Ratings</button>
         </nav>
 
         <section id="inventory-tab" class="admin-panel active">
@@ -86,8 +90,9 @@
                         <td>{{ book['uploaded_at'][:10] if book['uploaded_at'] else '—' }}</td>
                         <td>
                           <div class="button-row compact-actions">
+                            <button type="button" class="ghost-button small edit-book-trigger" data-book-id="{{ book['id'] }}" data-title="{{ book['title'] }}" data-author="{{ book['author'] }}" data-category-id="{{ book['category_id'] }}" data-description="{{ book['description'] }}">Edit</button>
                             <a href="{{ url_for('served_file', filename=book['filename']) }}" class="primary-button small" download>Download</a>
-                            <form method="post" action="{{ url_for('delete_book', book_id=book['id']) }}">
+                            <form method="post" action="{{ url_for('delete_book', book_id=book['id']) }}" onsubmit="return confirm('Delete this book?');">
                               <button type="submit" class="secondary-button small danger">Delete</button>
                             </form>
                           </div>
@@ -136,9 +141,45 @@
           </div>
         </section>
 
+        <section id="categories-tab" class="admin-panel">
+          <div class="panel-inner">
+            <h2>Category Management</h2>
+            <form method="post" action="{{ url_for('add_category') }}" class="stacked-form inline-form" style="margin-bottom: 24px;">
+              <input type="text" name="name" placeholder="Enter new category name" required style="max-width: 300px;" />
+              <button type="submit" class="primary-button small">+ Add Category</button>
+            </form>
+
+            <div class="table-wrap">
+              <table class="student-table">
+                <thead>
+                  <tr>
+                    <th>Category Name</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for cat in categories %}
+                    <tr>
+                      <td><strong>{{ cat['name'] }}</strong></td>
+                      <td>
+                        <form method="post" action="{{ url_for('delete_category', category_id=cat['id']) }}" onsubmit="return confirm('Delete category {{ cat['name'] }}?');">
+                          <button type="submit" class="secondary-button small danger">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section id="students-tab" class="admin-panel">
           <div class="panel-inner">
-            <h2>Student Details</h2>
+            <div class="section-header">
+              <h2>Student Details</h2>
+              <a href="{{ url_for('export_students') }}" class="secondary-button small">📥 Export Students CSV</a>
+            </div>
             {% if student_entries %}
               <div class="table-wrap">
                 <table class="student-table">
@@ -150,6 +191,7 @@
                       <th>Phone</th>
                       <th>Institution</th>
                       <th>Student ID</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -161,6 +203,9 @@
                         <td>{{ entry['phone'] or '—' }}</td>
                         <td>{{ entry['institution'] or '—' }}</td>
                         <td>{{ entry['student_id'] or '—' }}</td>
+                        <td>
+                          <button type="button" class="ghost-button small" onclick="openIdCardModal('{{ entry['name'] }}', '{{ entry['student_id'] }}', '{{ entry['institution'] }}', '{{ entry['phone'] }}')">🪪 Print Pass</button>
+                        </td>
                       </tr>
                     {% endfor %}
                   </tbody>
@@ -174,7 +219,10 @@
 
         <section id="users-tab" class="admin-panel">
           <div class="panel-inner">
-            <h2>Users</h2>
+            <div class="section-header">
+              <h2>Users</h2>
+              <a href="{{ url_for('export_users') }}" class="secondary-button small">📥 Export User Details CSV</a>
+            </div>
             <div class="admin-list">
               {% for user in users %}
                 <div class="admin-item compact">
@@ -191,27 +239,148 @@
           </div>
         </section>
 
-        <section id="activity-tab" class="admin-panel">
+        <section id="reviews-tab" class="admin-panel">
           <div class="panel-inner">
-            <h2>Recent Activity</h2>
-            {% if recent_activity %}
-              <div class="activity-list">
-                {% for item in recent_activity %}
-                  <div class="activity-item">
-                    <span class="activity-kind {{ item['kind'] }}">{{ item['kind']|title }}</span>
-                    <div>
-                      <h3>{{ item['label'] }}</h3>
-                      <p>{{ item['created_at'] }}</p>
-                    </div>
-                  </div>
-                {% endfor %}
+            <div class="section-header">
+              <h2>User Reviews & Ratings</h2>
+            </div>
+            {% if all_reviews %}
+              <div class="table-wrap">
+                <table class="student-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Book Title</th>
+                      <th>Rating</th>
+                      <th>Review Comment</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for r in all_reviews %}
+                      <tr>
+                        <td><strong>{{ r['user_name'] }}</strong></td>
+                        <td>{{ r['book_title'] }}</td>
+                        <td><span class="rating-badge">⭐ {{ r['rating'] }}/5</span></td>
+                        <td>{{ r['comment'] or 'No written review' }}</td>
+                        <td>{{ r['created_at'] or '—' }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
               </div>
             {% else %}
-              <p class="empty-state">No recent activity yet.</p>
+              <p class="empty-state">No user reviews or ratings submitted yet.</p>
             {% endif %}
           </div>
         </section>
+
+        </section>
       </main>
+    </div>
+
+    <!-- Edit Book Modal -->
+    <div id="edit-book-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 id="edit-modal-title">Edit Book Details</h3>
+          <button type="button" class="modal-close" id="close-edit-modal" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="edit-book-form" method="post" action="" class="stacked-form">
+            <label>
+              <span>Title</span>
+              <input type="text" id="edit-book-title" name="title" required />
+            </label>
+            <label>
+              <span>Author</span>
+              <input type="text" id="edit-book-author" name="author" />
+            </label>
+            <label>
+              <span>Category</span>
+              <select id="edit-book-category" name="category_id">
+                {% for category in categories %}
+                  <option value="{{ category['id'] }}">{{ category['name'] }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>
+              <span>Description</span>
+              <textarea id="edit-book-description" name="description" rows="4"></textarea>
+            </label>
+            <button type="submit" class="primary-button">Save Changes</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Digital Visitor ID Card Pass Modal -->
+    <div id="idcard-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="modal-box idcard-modal-box">
+        <div class="modal-header">
+          <h3>Student Visitor ID Pass</h3>
+          <button type="button" class="modal-close" onclick="closeIdCardModal()">&times;</button>
+        </div>
+        <div class="modal-body idcard-modal-body">
+          <div class="id-card-preview" id="id-card-printable">
+            <div class="id-card-header">
+              <div class="id-card-logo">V.U</div>
+              <div>
+                <h4>V.U ROHITH BOOKS</h4>
+                <p>DIGITAL LIBRARY VISITOR PASS</p>
+              </div>
+            </div>
+            <div class="id-card-body">
+              <div class="id-photo-placeholder">👤</div>
+              <div class="id-card-details">
+                <p class="id-name" id="card-student-name">Student Name</p>
+                <p class="id-no-badge">ID: <strong id="card-student-no">000000</strong></p>
+                <p><strong>Institution:</strong> <span id="card-institution">Library Member</span></p>
+                <p><strong>Contact:</strong> <span id="card-phone">—</span></p>
+                <p><strong>Status:</strong> <span class="tag-status">Verified Visitor</span></p>
+              </div>
+            </div>
+            <div class="id-card-footer">
+              <div class="barcode-graphic">||| | |||| | ||| |||| | |||</div>
+              <p>Authorized Digital Pass • V.U Rohith Digital Library</p>
+            </div>
+          </div>
+          <div class="idcard-actions">
+            <button type="button" class="primary-button" onclick="window.print()">🖨️ Print / Save Pass</button>
+            <button type="button" class="secondary-button" onclick="closeIdCardModal()">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity Modal -->
+    <div id="activity-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+      <div class="modal-box" style="max-width: 600px;">
+        <div class="modal-header">
+          <h3>⚡ Recent Library Activity</h3>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <a href="{{ url_for('export_downloads') }}" class="secondary-button small">📥 Export Downloads CSV</a>
+            <button type="button" class="modal-close" onclick="closeActivityModal()">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          {% if recent_activity %}
+            <div class="activity-list">
+              {% for item in recent_activity %}
+                <div class="activity-item">
+                  <span class="activity-kind {{ item['kind'] }}">{{ item['kind']|title }}</span>
+                  <div>
+                    <h3>{{ item['label'] }}</h3>
+                    <p>{{ item['created_at'] }}</p>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty-state">No recent activity recorded yet.</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </body>
 </html>
