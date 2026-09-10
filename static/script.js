@@ -175,8 +175,11 @@ function closeEditModal() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const defaultSection = document.body.dataset.defaultSection || (document.body.classList.contains('logged-in') ? 'books' : 'landing');
-  showSection(defaultSection);
+  const isMainPage = document.getElementById('landing') || document.getElementById('books') || document.getElementById('auth');
+  if (isMainPage) {
+    const defaultSection = document.body.dataset.defaultSection || (document.body.classList.contains('logged-in') ? 'books' : 'landing');
+    showSection(defaultSection);
+  }
 
   document.querySelectorAll('.nav-link').forEach((button) => {
     button.addEventListener('click', () => {
