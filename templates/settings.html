@@ -49,11 +49,12 @@
         <div class="admin-tabs settings-tabs" aria-label="Settings sections">
           <button type="button" class="settings-tab admin-tab active" data-target="profile-tab">👤 Profile</button>
           <button type="button" class="settings-tab admin-tab" data-target="password-tab">🔒 Security</button>
-          <button type="button" class="settings-tab admin-tab" data-target="preferences-tab">🎨 Preferences</button>
           {% if session.get('is_admin') %}
             <button type="button" class="settings-tab admin-tab" data-target="admin-settings-tab">🛡️ System Settings</button>
+          {% else %}
+            <button type="button" class="settings-tab admin-tab" data-target="preferences-tab">🎨 Preferences</button>
+            <button type="button" class="settings-tab admin-tab" data-target="delete-tab">⚠️ Account</button>
           {% endif %}
-          <button type="button" class="settings-tab admin-tab" data-target="delete-tab">⚠️ Account</button>
         </div>
 
         <!-- Profile Settings Panel -->
@@ -104,29 +105,6 @@
           </div>
         </section>
 
-        <!-- Interface Preferences Panel -->
-        <section id="preferences-tab" class="settings-panel panel">
-          <div class="panel-inner">
-            <h2>Interface Preferences</h2>
-            <div class="stacked-form">
-              <label>
-                <span>Theme Mode</span>
-                <div style="display: flex; gap: 12px; margin-top: 6px;">
-                  <button type="button" class="secondary-button" onclick="document.body.classList.remove('light-theme'); localStorage.setItem('theme', 'dark'); alert('Dark mode preference saved!');">🌙 Dark Mode</button>
-                  <button type="button" class="secondary-button" onclick="document.body.classList.add('light-theme'); localStorage.setItem('theme', 'light'); alert('Light mode preference saved!');">☀️ Light Mode</button>
-                </div>
-              </label>
-              <label style="margin-top: 14px;">
-                <span>Default View Layout</span>
-                <select style="max-width: 280px; padding: 10px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--stroke); color: var(--text);">
-                  <option value="horizontal">Horizontal List View</option>
-                  <option value="grid">Grid View</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        </section>
-
         {% if session.get('is_admin') %}
           <!-- Admin System Settings Panel -->
           <section id="admin-settings-tab" class="settings-panel panel">
@@ -156,28 +134,51 @@
               </div>
             </div>
           </section>
-        {% endif %}
-
-        <!-- Delete Account Panel -->
-        <section id="delete-tab" class="settings-panel panel">
-          <div class="panel-inner">
-            <h2>Delete Account</h2>
-            <form method="post" action="{{ url_for('delete_account') }}" class="stacked-form" onsubmit="return confirm('This will permanently delete your account and related data. Continue?');">
-              <p class="empty-state">This action is permanent and cannot be undone.</p>
-              <label>
-                <span>Confirm your password</span>
-                <input type="password" name="delete_password" placeholder="Enter your password" required />
-              </label>
-              <div class="checkbox-container" style="display: flex; align-items: center; gap: 10px; margin: 16px 0; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px 16px; border-radius: 12px;">
-                <input type="checkbox" id="confirm_delete" name="confirm_delete" value="on" style="width: 20px; height: 20px; accent-color: #ef4444; cursor: pointer;" required />
-                <label for="confirm_delete" style="font-size: 0.92rem; font-weight: 500; color: var(--text); cursor: pointer; user-select: none; margin: 0;">
-                  I understand this will permanently delete my account.
+        {% else %}
+          <!-- Interface Preferences Panel (Visitors only) -->
+          <section id="preferences-tab" class="settings-panel panel">
+            <div class="panel-inner">
+              <h2>Interface Preferences</h2>
+              <div class="stacked-form">
+                <label>
+                  <span>Theme Mode</span>
+                  <div style="display: flex; gap: 12px; margin-top: 6px;">
+                    <button type="button" class="secondary-button" onclick="document.body.classList.remove('light-theme'); localStorage.setItem('theme', 'dark'); alert('Dark mode preference saved!');">🌙 Dark Mode</button>
+                    <button type="button" class="secondary-button" onclick="document.body.classList.add('light-theme'); localStorage.setItem('theme', 'light'); alert('Light mode preference saved!');">☀️ Light Mode</button>
+                  </div>
+                </label>
+                <label style="margin-top: 14px;">
+                  <span>Default View Layout</span>
+                  <select style="max-width: 280px; padding: 10px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--stroke); color: var(--text);">
+                    <option value="horizontal">Horizontal List View</option>
+                    <option value="grid">Grid View</option>
+                  </select>
                 </label>
               </div>
-              <button type="submit" class="primary-button danger">Delete My Account</button>
-            </form>
-          </div>
-        </section>
+            </div>
+          </section>
+
+          <!-- Delete Account Panel (Visitors only) -->
+          <section id="delete-tab" class="settings-panel panel">
+            <div class="panel-inner">
+              <h2>Delete Account</h2>
+              <form method="post" action="{{ url_for('delete_account') }}" class="stacked-form" onsubmit="return confirm('This will permanently delete your account and related data. Continue?');">
+                <p class="empty-state">This action is permanent and cannot be undone.</p>
+                <label>
+                  <span>Confirm your password</span>
+                  <input type="password" name="delete_password" placeholder="Enter your password" required />
+                </label>
+                <div class="checkbox-container" style="display: flex; align-items: center; gap: 10px; margin: 16px 0; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px 16px; border-radius: 12px;">
+                  <input type="checkbox" id="confirm_delete" name="confirm_delete" value="on" style="width: 20px; height: 20px; accent-color: #ef4444; cursor: pointer;" required />
+                  <label for="confirm_delete" style="font-size: 0.92rem; font-weight: 500; color: var(--text); cursor: pointer; user-select: none; margin: 0;">
+                    I understand this will permanently delete my account.
+                  </label>
+                </div>
+                <button type="submit" class="primary-button danger">Delete My Account</button>
+              </form>
+            </div>
+          </section>
+        {% endif %}
       </main>
     </div>
   </body>

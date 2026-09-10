@@ -654,6 +654,10 @@ def delete_account():
         flash("Please log in to delete your account.", "error")
         return redirect(url_for("home"))
 
+    if session.get("is_admin"):
+        flash("The Administrator account cannot be deleted.", "error")
+        return redirect(url_for("settings_page"))
+
     password = request.form.get("delete_password", "").strip()
     confirm_delete = request.form.get("confirm_delete", "").strip().lower() in {"on", "true", "1", "yes"}
 
