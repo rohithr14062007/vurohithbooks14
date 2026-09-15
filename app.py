@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 from flask import Flask, flash, redirect, render_template, request, send_file, send_from_directory, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -33,6 +34,7 @@ if not supabase_url or not supabase_key:
 
 supabase = create_client(supabase_url, supabase_key)
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "books")
@@ -119,11 +121,15 @@ def remove_storage_file(filename):
 
 
 def get_user_by_username(username):
-    if not supabase:
+    if not username or not supabase:
         return None
     try:
-        response = supabase.table("users").select("*").eq("username", username).execute()
-        return response.data[0] if response.data else None
+        clean_name = str(username).strip()
+        res_uname = supabase.table("users").select("*").ilike("username", clean_name).execute()
+        if res_uname.data:
+            return res_uname.data[0]
+        res_email = supabase.table("users").select("*").ilike("email", clean_name).execute()
+        return res_email.data[0] if res_email.data else None
     except Exception as e:
         print(f"Error getting user by username: {e}")
         return None
@@ -485,10 +491,14 @@ def login():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
 
+    if not username or not password:
+        flash("Please enter both username/email and password.", "error")
+        return redirect(url_for("home", section="auth"))
+
     user = get_user_by_username(username)
-    if not user or not check_password_hash(user["password_hash"], password):
+    if not user or not check_password_hash(user.get("password_hash", ""), password):
         flash("Invalid username or password.", "error")
-        return redirect(url_for("home"))
+        return redirect(url_for("home", section="auth"))
 
     session.clear()
     session["user_id"] = user["id"]
