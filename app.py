@@ -1054,7 +1054,6 @@ def submit_review(book_id):
         supabase.table("reviews").insert({
             "book_id": book_id,
             "user_id": session["user_id"],
-            "user_name": user.get("name") or user.get("username") or "Anonymous",
             "rating": rating,
             "comment": comment
         }).execute()
