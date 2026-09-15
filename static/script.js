@@ -454,7 +454,48 @@ function closeActivityModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// Register PWA Service Worker
+// Register PWA Service Worker & Install Prompt
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('install-app-btn');
+  if (btn) {
+    btn.style.display = 'inline-flex';
+  }
+});
+
+function triggerAppInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User installed V.U Rohith Books app');
+      }
+      deferredPrompt = null;
+    });
+  } else {
+    openInstallAppModal();
+  }
+}
+
+function openInstallAppModal() {
+  const modal = document.getElementById('install-app-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
+}
+
+function closeInstallAppModal() {
+  const modal = document.getElementById('install-app-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')

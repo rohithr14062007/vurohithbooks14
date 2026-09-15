@@ -32,6 +32,7 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button type="button" class="primary-button small install-app-btn" id="install-app-btn" onclick="triggerAppInstall()">📲 Download App</button>
           <a href="{{ url_for('home') }}" class="ghost-button small">Back to Library</a>
           <a href="{{ url_for('logout') }}" class="ghost-button small">Log out</a>
         </div>
@@ -71,6 +72,30 @@
           </div>
         {% endif %}
       </main>
+    </div>
+    <!-- Download / Install App Modal -->
+    <div id="install-app-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="install-modal-title">
+      <div class="modal-box" style="max-width: 480px; text-align: center;">
+        <div class="modal-header" style="justify-content: center; position: relative;">
+          <h3 id="install-modal-title">📲 Install V.U Rohith Books App</h3>
+          <button type="button" class="modal-close" onclick="closeInstallAppModal()" style="position: absolute; right: 16px;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px 16px;">
+          <div style="font-size: 3rem; margin-bottom: 12px;">📱</div>
+          <h4 style="font-size: 1.15rem; margin-bottom: 8px; color: var(--text);">Install on your Mobile Phone</h4>
+          <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 20px;">Use V.U Rohith Books anytime like a native mobile app directly from your home screen!</p>
+          
+          <div style="background: rgba(148, 163, 184, 0.08); padding: 14px; border-radius: 14px; text-align: left; margin-bottom: 16px; font-size: 0.88rem; line-height: 1.5;">
+            <p style="font-weight: 600; margin-bottom: 6px; color: var(--accent);">🤖 Android (Google Chrome):</p>
+            <p style="margin: 0 0 10px 8px;">Tap <strong>3 Dots (⋮)</strong> top-right &rarr; Select <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</p>
+            
+            <p style="font-weight: 600; margin-bottom: 6px; color: var(--accent);">🍏 iPhone (Safari):</p>
+            <p style="margin: 0 0 0 8px;">Tap <strong>Share (⎋)</strong> button &rarr; Scroll down &amp; select <strong>"Add to Home Screen"</strong>.</p>
+          </div>
+          
+          <button type="button" class="primary-button" onclick="closeInstallAppModal()" style="width: 100%;">Got it!</button>
+        </div>
+      </div>
     </div>
   </body>
 </html>
