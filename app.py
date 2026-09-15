@@ -19,9 +19,9 @@ load_dotenv(os.path.join(BASE_DIR, "supabase.env"), override=True)
 
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = (
-    os.environ.get("SUPABASE_KEY")
-    or os.environ.get("SUPABASE_SECRET_KEY")
+    os.environ.get("SUPABASE_SECRET_KEY")
     or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_KEY")
     or os.environ.get("SUPABASE_PUBLISHABLE_KEY")
     or os.environ.get("SUPABASE_ANON_KEY")
 )
