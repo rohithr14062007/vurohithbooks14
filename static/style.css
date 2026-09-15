@@ -1810,4 +1810,207 @@ body.light-theme .feature-card {
 .activity-time {
   font-size: 0.78rem;
   color: var(--muted);
-}
+}
+
+/* ==========================================
+   MOBILE & TABLET RESPONSIVE DESIGN (PWA)
+   ========================================== */
+
+/* Touch Target & Mobile iOS Zoom Fix */
+input, select, textarea, button {
+  font-size: 16px; /* Prevents auto-zoom on mobile WebKit */
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    width: min(100% - 16px, 1200px);
+    margin: 10px auto 24px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 16px;
+  }
+
+  .brand-group {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .brand-block h1 {
+    font-size: 1.25rem;
+  }
+
+  .user-pill {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+  }
+
+  .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .topbar-actions .ghost-button,
+  .topbar-actions .primary-button {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  /* Main Navigation Scrollable Tab Bar */
+  .main-nav {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px !important;
+    padding: 6px 4px 10px !important;
+    margin-bottom: 16px !important;
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .main-nav::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .main-nav .nav-link {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+    padding: 8px 14px !important;
+    font-size: 0.85rem !important;
+    border-radius: 12px !important;
+  }
+
+  /* Search & Filter Controls */
+  .controls-bar,
+  .search-filter-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .search-box,
+  .filter-select {
+    width: 100% !important;
+  }
+
+  /* Book Grid */
+  .books-grid,
+  .book-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+    gap: 14px !important;
+  }
+
+  /* Book Card Touch Optimization */
+  .book-card {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .book-cover-wrap {
+    height: 200px;
+  }
+
+  /* Book Details Page */
+  .detail-hero,
+  .book-details-hero {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 20px !important;
+    padding: 18px !important;
+  }
+
+  .detail-cover,
+  .book-details-cover {
+    width: 100% !important;
+    max-width: 220px !important;
+    margin: 0 auto !important;
+  }
+
+  .detail-actions,
+  .book-actions {
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 10px !important;
+  }
+
+  .detail-actions button,
+  .detail-actions a,
+  .book-actions button,
+  .book-actions a {
+    width: 100% !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+
+  /* Admin Dashboard Layout */
+  .admin-stats-grid,
+  .stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  .admin-panel-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Modals */
+  .modal-card,
+  .modal-content {
+    width: 95% !important;
+    max-width: 100% !important;
+    padding: 18px 14px !important;
+    border-radius: 18px !important;
+    margin: 10px !important;
+  }
+
+  /* Settings Page */
+  .settings-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .books-grid,
+  .book-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-stats-grid,
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .brand-block h1 {
+    font-size: 1.1rem;
+  }
+
+  .user-pill {
+    display: none; /* Hide username pill on ultra-small screens to save header space */
+  }
+}
+

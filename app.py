@@ -1186,6 +1186,16 @@ def served_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 
+@app.route("/manifest.json")
+def serve_manifest():
+    return send_from_directory("static", "manifest.json", mimetype="application/manifest+json")
+
+
+@app.route("/sw.js")
+def serve_sw():
+    return send_from_directory("static", "sw.js", mimetype="application/javascript")
+
+
 if __name__ == "__main__":
     init_db()
     port = int(os.environ.get("PORT", 2111))
